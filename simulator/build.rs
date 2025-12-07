@@ -50,16 +50,27 @@ fn main() {
 
 fn generate_stubs(out_dir: &std::ffi::OsStr) {
     let stub_phenotype = r#"
+use candle_core::{Tensor, Result, Module};
+use candle_nn::{Linear, VarBuilder, linear, Sequential, seq};
+
 pub struct PhenotypeOutput {}
 pub struct PhenotypeEngine {}
 impl PhenotypeEngine {
-    pub fn new() -> Self { Self {} }
-    pub fn forward(&self) -> PhenotypeOutput { PhenotypeOutput {} }
+    pub fn new(_vs: VarBuilder, _input_dim: usize, _hidden_dim: usize) -> Result<Self> { 
+        Ok(Self {}) 
+    }
+    pub fn forward(&self, _genes: &Tensor) -> Result<PhenotypeOutput> { 
+        Ok(PhenotypeOutput {}) 
+    }
 }
 "#;
     
     let stub_physics = r#"
-pub fn update_physics() -> Result<(), String> { Ok(()) }
+use candle_core::{Tensor, Result};
+
+pub fn update_physics(_state: &Tensor, _p1: &Tensor, _p2: &Tensor) -> Result<Tensor> { 
+    Tensor::zeros((1, 1), candle_core::DType::F32, &candle_core::Device::Cpu)
+}
 "#;
     
     fs::write(Path::new(out_dir).join("_gen_phenotype.rs"), stub_phenotype).unwrap();

@@ -105,9 +105,11 @@ fn main() -> Result<()> {
                 let parent_gene = genes.narrow(0, parent_idx, 1)?;
                 next_genes.push(parent_gene.clone());
                 
-                // Add mutated offspring
+                // Add mutated offspring with bounded mutations
                 let mutation = Tensor::randn(0f32, 0.1f32, parent_gene.shape(), &device)?;
                 let offspring = (parent_gene + mutation)?;
+                // Clamp to reasonable range [-3, 3] to prevent numerical instabilities
+                let offspring = offspring.clamp(-3.0, 3.0)?;
                 next_genes.push(offspring);
             }
             

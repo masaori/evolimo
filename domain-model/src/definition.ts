@@ -45,9 +45,16 @@ export const rules: PhysicsRule[] = [
   },
   
   // Energy consumption: energy = energy - metabolism * dt
+  // Also affected by movement cost when velocity is non-zero
   {
     target_state: 'energy',
-    expr: ops.sub(S.energy, ops.mul(P.metabolism, C.dt))
+    expr: ops.sub(
+      S.energy, 
+      ops.add(
+        ops.mul(P.metabolism, C.dt),
+        ops.mul(ops.mul(S.v, S.v), ops.mul(P.move_cost, C.dt))
+      )
+    )
   }
 ];
 

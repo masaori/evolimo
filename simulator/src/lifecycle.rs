@@ -44,20 +44,22 @@ impl Generation {
         let mut rng = fastrand::Rng::new();
         let mut parents = Vec::new();
         let mut selected = HashSet::new();
+        let tournament_size = 3;
 
         while parents.len() < n_parents {
-            // Tournament selection
+            // Tournament selection: pick best from random sample
             let mut best_idx = rng.usize(0..self.fitness.len());
             let mut best_fitness = self.fitness[best_idx];
 
-            for _ in 0..3 {
+            for _ in 0..tournament_size {
                 let idx = rng.usize(0..self.fitness.len());
-                if self.fitness[idx] > best_fitness && !selected.contains(&idx) {
+                if self.fitness[idx] > best_fitness {
                     best_idx = idx;
                     best_fitness = self.fitness[idx];
                 }
             }
 
+            // Only add if not already selected (prevent duplicates)
             if !selected.contains(&best_idx) {
                 parents.push(best_idx);
                 selected.insert(best_idx);
