@@ -1,0 +1,27 @@
+# Domain Model (TypeScript)
+domain-model/_gen/*.json
+domain-model/node_modules
+domain-model/dist
+
+# Simulator (Rust)
+simulator/src/_gen/*.rs
+simulator/target
+simulator/Cargo.lock
+
+# Visualizer
+visualizer/node_modules
+visualizer/dist
+
+# Editor
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/extensions.json
+.idea
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
