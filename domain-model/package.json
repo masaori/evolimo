@@ -1,0 +1,16 @@
+{
+  "name": "domain-model",
+  "version": "0.1.0",
+  "description": "TypeScript-based domain model and configuration compiler for Evolimo",
+  "main": "src/builder.ts",
+  "scripts": {
+    "build": "echo 'Build script not yet implemented'"
+  },
+  "keywords": [
+    "evolimo",
+    "simulation",
+    "domain-model"
+  ],
+  "author": "",
+  "license": "MIT"
+}

@@ -1,0 +1,10 @@
+[package]
+name = "simulator"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+# Dependencies will be added during implementation
+
+[build-dependencies]
+# Build dependencies will be added during implementation
