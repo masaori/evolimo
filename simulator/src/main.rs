@@ -133,7 +133,7 @@ fn main() -> Result<()> {
 
     loop {
         // B. Physics update (State + Parameters -> New State)
-        let new_state = update_physics(&state, &params.attributes, &params.physics)?;
+        let new_state = update_physics(&state, &params.physics, &params.attributes)?;
 
         // Explicitly drop old tensors to free GPU memory
         state = new_state;
@@ -152,7 +152,7 @@ fn main() -> Result<()> {
                     recorder.frames_written(),
                     output_path
                 );
-                break;
+                return Ok(());
             }
         }
 

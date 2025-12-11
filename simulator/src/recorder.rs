@@ -50,7 +50,6 @@ pub struct EvoRecorder {
     writer: BufWriter<File>,
     header: EvoHeader,
     frame_buffer: Vec<u8>,
-    body_offset: u64,
     frames_written: u64,
 }
 
@@ -71,8 +70,6 @@ impl EvoRecorder {
         writer.write_all(&header_len.to_le_bytes())?;
         writer.write_all(&header_json)?;
 
-        let body_offset =
-            (MAGIC_BYTES.len() + std::mem::size_of::<u32>() + header_json.len()) as u64;
         let capacity =
             header.config.n_agents * header.config.state_dims * std::mem::size_of::<f32>();
 
@@ -80,7 +77,6 @@ impl EvoRecorder {
             writer,
             header,
             frame_buffer: Vec::with_capacity(capacity),
-            body_offset,
             frames_written: 0,
         })
     }
@@ -123,14 +119,6 @@ impl EvoRecorder {
 
     pub fn frames_written(&self) -> u64 {
         self.frames_written
-    }
-
-    pub fn header(&self) -> &EvoHeader {
-        &self.header
-    }
-
-    pub fn body_offset(&self) -> u64 {
-        self.body_offset
     }
 }
 
