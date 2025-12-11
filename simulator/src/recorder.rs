@@ -10,6 +10,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
 pub const MAGIC_BYTES: &[u8; 4] = b"EVO1";
+pub const MAX_HEADER_BYTES: u32 = 1_048_576; // 1 MB
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct EvoConfig {
@@ -48,7 +49,8 @@ impl EvoHeader {
 pub struct EvoRecorder {
     writer: BufWriter<File>,
     header: EvoHeader,
-    frame_stride: usize,
+    frame_buffer: Vec<u8>,
+    body_offset: u64,
     frames_written: u64,
 }
 
@@ -57,17 +59,28 @@ impl EvoRecorder {
         let file = File::create(path)?;
         let mut writer = BufWriter::new(file);
         let header_json = serde_json::to_vec(&header)?;
-        let header_len = u32::try_from(header_json.len())
-            .map_err(|_| anyhow::anyhow!("Header too large to encode length"))?;
+        if header_json.len() > MAX_HEADER_BYTES as usize {
+            bail!(
+                "Header too large to encode length (max {} bytes)",
+                MAX_HEADER_BYTES
+            );
+        }
+        let header_len = header_json.len() as u32;
 
         writer.write_all(MAGIC_BYTES)?;
         writer.write_all(&header_len.to_le_bytes())?;
         writer.write_all(&header_json)?;
 
+        let body_offset =
+            (MAGIC_BYTES.len() + std::mem::size_of::<u32>() + header_json.len()) as u64;
+        let capacity =
+            header.config.n_agents * header.config.state_dims * std::mem::size_of::<f32>();
+
         Ok(Self {
             writer,
-            frame_stride: header.config.n_agents * header.config.state_dims,
             header,
+            frame_buffer: Vec::with_capacity(capacity),
+            body_offset,
             frames_written: 0,
         })
     }
@@ -79,7 +92,7 @@ impl EvoRecorder {
             || dims[1] != self.header.config.state_dims
         {
             bail!(
-                "State shape mismatch. expected ({}, {}), got {:?}",
+                "Shape mismatch: expected ({}, {}), got {:?}",
                 self.header.config.n_agents,
                 self.header.config.state_dims,
                 dims
@@ -87,11 +100,17 @@ impl EvoRecorder {
         }
 
         let frame = state.to_vec2::<f32>()?;
-        for row in frame.iter() {
-            for value in row.iter() {
-                self.writer.write_all(&value.to_le_bytes())?;
-            }
-        }
+        let flat: Vec<f32> = frame.into_iter().flatten().collect();
+        let byte_slice = unsafe {
+            std::slice::from_raw_parts(
+                flat.as_ptr() as *const u8,
+                flat.len() * std::mem::size_of::<f32>(),
+            )
+        };
+
+        self.frame_buffer.clear();
+        self.frame_buffer.extend_from_slice(byte_slice);
+        self.writer.write_all(&self.frame_buffer)?;
 
         self.frames_written += 1;
         Ok(())
@@ -111,8 +130,7 @@ impl EvoRecorder {
     }
 
     pub fn body_offset(&self) -> u64 {
-        let header_json = serde_json::to_vec(&self.header).unwrap_or_default();
-        (MAGIC_BYTES.len() + std::mem::size_of::<u32>() + header_json.len()) as u64
+        self.body_offset
     }
 }
 

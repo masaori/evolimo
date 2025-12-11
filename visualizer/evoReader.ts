@@ -29,7 +29,22 @@ const MAGIC = "EVO1";
 const MAGIC_LEN = 4;
 const HEADER_LEN_SIZE = 4;
 
+let cachedLittleEndian: boolean | null = null;
+function ensureLittleEndian() {
+  if (cachedLittleEndian === null) {
+    cachedLittleEndian =
+      new Uint16Array(new Uint8Array([1, 0]).buffer)[0] === 1;
+  }
+  if (!cachedLittleEndian) {
+    throw new Error(
+      "Big-endian platforms are not supported (frames are stored as little-endian f32)."
+    );
+  }
+}
+
 export async function parseEvoFile(blob: Blob): Promise<EvoFileHandle> {
+  ensureLittleEndian();
+
   const headerPrefix = new Uint8Array(
     await blob.slice(0, MAGIC_LEN + HEADER_LEN_SIZE).arrayBuffer()
   );

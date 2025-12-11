@@ -20,58 +20,107 @@ use _gen::phenotype::PhenotypeEngine;
 use _gen::physics::update_physics;
 use recorder::{EvoConfig, EvoHeader, EvoRecorder, PlaybackMeta};
 
+/// Default agent count used when `EVO_N_AGENTS` is not provided. Tuned for local
+/// development; override for large-scale runs.
+const N_AGENTS: usize = 1_000;
+/// Length of the gene vector per agent.
+const GENE_LEN: usize = 32;
+/// Hidden layer width for the phenotype network.
+const HIDDEN_LEN: usize = 64;
+/// Number of state variables stored per agent (pos_x, vel_x, energy).
+const STATE_DIMS: usize = 3;
+/// How many simulation steps to skip between frame saves.
+const SAVE_INTERVAL: u64 = 10;
+/// Maximum frames recorded in one run. Override `EVO_MAX_FRAMES` to change.
+const MAX_FRAMES: u64 = 10;
+/// Simulation timestep used for metadata only.
+const DT: f32 = 0.1;
+
+fn env_or_default_usize(key: &str, default: usize) -> usize {
+    std::env::var(key)
+        .ok()
+        .and_then(|v| v.parse::<usize>().ok())
+        .unwrap_or(default)
+}
+
+fn env_or_default_u64(key: &str, default: u64) -> u64 {
+    std::env::var(key)
+        .ok()
+        .and_then(|v| v.parse::<u64>().ok())
+        .unwrap_or(default)
+}
+
+#[cfg(feature = "cuda")]
+/// Select the compute device. When built with the `cuda` feature, it will try to
+/// use CUDA and fall back to CPU.
+fn select_device() -> Device {
+    Device::cuda_if_available(0).unwrap_or_else(|_| Device::Cpu)
+}
+
+#[cfg(all(feature = "metal", not(feature = "cuda")))]
+/// Select the compute device. Metal is tried first, then CPU as a fallback.
+fn select_device() -> Device {
+    Device::new_metal(0).unwrap_or(Device::Cpu)
+}
+
+#[cfg(all(not(feature = "cuda"), not(feature = "metal")))]
+/// Select the compute device. CUDA/Metal support is disabled; CPU is always used.
+fn select_device() -> Device {
+    Device::Cpu
+}
+
 fn main() -> Result<()> {
     println!("🧬 Evolimo - Evolution Simulator");
     println!("================================\n");
 
-    let device = Device::Cpu;
+    let device = select_device();
     println!("📍 Device: {:?}\n", device);
 
-    // Configuration
-    let n_agents = 1000000;
-    let gene_len = 32;
-    let hidden_len = 64;
-    let state_dims = 3usize;
-    let save_interval: u64 = 10;
-    let max_frames: u64 = 10;
+    let n_agents = env_or_default_usize("EVO_N_AGENTS", N_AGENTS);
+    let max_frames = env_or_default_u64("EVO_MAX_FRAMES", MAX_FRAMES);
 
     // Initialize phenotype engine
     let varmap = candle_nn::VarMap::new();
     let vs = VarBuilder::from_varmap(&varmap, candle_core::DType::F32, &device);
-    let phenotype_engine = PhenotypeEngine::new(vs, gene_len, hidden_len)?;
+    let phenotype_engine = PhenotypeEngine::new(vs, GENE_LEN, HIDDEN_LEN)?;
 
     // Initialize agents
-    let genes = Tensor::randn(0f32, 1f32, (n_agents, gene_len), &device)?;
-    let mut state = Tensor::zeros((n_agents, state_dims), candle_core::DType::F32, &device)?; // [pos_x, vel_x, energy]
+    let genes = Tensor::randn(0f32, 1f32, (n_agents, GENE_LEN), &device)?;
+    let mut state = Tensor::zeros((n_agents, STATE_DIMS), candle_core::DType::F32, &device)?; // [pos_x, vel_x, energy]
 
     println!("🔧 Initialized {} agents", n_agents);
-    println!("   Gene length: {}", gene_len);
+    println!("   Gene length: {}", GENE_LEN);
     println!("   State variables: 3 (pos_x, vel_x, energy)\n");
 
     // A. Phenotype expression (Genes -> Parameters)
     // Since genes are static during simulation, we can calculate this once.
     let params = phenotype_engine.forward(&genes)?;
 
+    debug_assert!(
+        max_frames <= usize::MAX as u64,
+        "EVO_MAX_FRAMES truncated on this platform"
+    );
+    let total_frames = max_frames as usize;
     let header = EvoHeader::new(
         EvoConfig {
             n_agents,
-            state_dims,
+            state_dims: STATE_DIMS,
             state_labels: vec![
                 "pos_x".to_string(),
                 "vel_x".to_string(),
                 "energy".to_string(),
             ],
-            dt: 0.1,
+            dt: DT,
         },
         PlaybackMeta {
-            total_frames: max_frames as usize,
-            save_interval,
+            total_frames,
+            save_interval: SAVE_INTERVAL,
         },
     );
 
     let output_path = "sim_output.evo";
     let mut recorder = EvoRecorder::create(output_path, header)?;
-    println!("💾 Recording frames to {output_path} (every {save_interval} steps)\n");
+    println!("💾 Recording frames to {output_path} (every {SAVE_INTERVAL} steps)\n");
 
     println!(
         "▶️  Running simulation until {} frames are recorded...\n",
@@ -93,10 +142,10 @@ fn main() -> Result<()> {
         step += 1;
         steps_since_last_report += 1;
 
-        if step % save_interval == 0 {
+        if step % SAVE_INTERVAL == 0 {
             recorder.write_frame(&state)?;
 
-            if recorder.frames_written() as u64 >= max_frames {
+            if recorder.frames_written() >= max_frames {
                 recorder.flush()?;
                 println!(
                     "✅ Recorded {} frames. Output: {}",
