@@ -8,7 +8,7 @@ TypeScript定義からRustコードを自動生成する生物進化シミュレ
 evolimo/
 ├── domain-model/      # TypeScript DSL定義層
 ├── simulator/         # Rust高性能シミュレーション層
-└── visualizer/        # 可視化層 (Future work)
+└── visualizer/        # 可視化層 (設計提案は visualizer/README.md)
 ```
 
 ## Quick Start
