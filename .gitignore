@@ -7,6 +7,7 @@ domain-model/dist
 simulator/src/_gen/*.rs
 simulator/target
 simulator/Cargo.lock
+simulator/scripts/generators/target
 
 # Visualizer
 visualizer/node_modules
