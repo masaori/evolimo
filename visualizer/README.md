@@ -47,7 +47,7 @@ visualizer/
 ## 4. 使用ライブラリ候補
 - パーサ: `serde`, `serde_json`, `memmap2`, `bytemuck`
 - UI/描画: `egui` + `eframe` (同梱 `wgpu`)、軽量でセットアップ容易
-- プロット: `plotters` または `egui_plot`（`egui` addon、依存追加最小で済む）
+- プロット: 標準は `egui_plot`（`egui` addon, 依存追加最小）。高解像度バッチ出力が必要になった場合のみ `plotters` を追加検討。
 - 同期: `parking_lot`（軽量な `RwLock` 用途）
 - 非同期: 必要なら `tokio` をオプション化（標準は同期で十分）
 
