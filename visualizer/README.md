@@ -7,6 +7,18 @@
 - 出力: デスクトップ用のインタラクティブ再生 UI（将来的に動画・画像エクスポートを追加可能）
 - 非目標: Web移植、リアルタイム大規模分散描画（別途検討）
 
+### 前提: evolimo が扱うもの
+- 物理シミュレーションで進化するエージェント群を扱い、状態は少なくとも `pos_x`, `vel_x`, `energy` を含む（`recorder.rs` 時点）。
+- Phenotype パラメータは属性/物理グループへ分岐し、状態更新に影響する。
+- `.evo` にはヘッダー（メタ情報）とフレーム列（全エージェント×state_dimsの `f32`）が記録される。
+
+### 必須ビュー（最小セット）
+1. **Overview**: メタ情報（timestamp, dt, save_interval, total_frames, state_labels）と再生コントロール（再生/停止/シーク/FPS）。
+2. **Scatter/Map**: `pos_x` vs 任意軸（例: `energy`）を散布図表示。2軸は state_labels から選択式。
+3. **Line (Time-series)**: 指定エージェントの `energy` などを時系列で表示（シーク位置に同期）。
+4. **Histogram**: 現在フレームにおける単一 state の分布（例: energy 分布）。
+5. **Table (optional)**: 現在フレームの統計サマリ（mean/max/min/percentile）を軽量に表示。
+
 ### 用語
 - **フレームスライス**: ボディに連続配置された1フレーム分（全エージェント×全state_dims）のバイト列を `&[f32]` として解釈したもの。例: `n_agents=3, state_dims=2` → `[a0_d0, a0_d1, a1_d0, a1_d1, a2_d0, a2_d1]`。
 
