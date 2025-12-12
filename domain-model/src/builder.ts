@@ -6,6 +6,7 @@ import type { Expression } from './types.js';
 export const ops = {
   state: (id: string): Expression => ({ op: 'ref_state', id }),
   param: (id: string, group: string): Expression => ({ op: 'ref_param', id, group }),
+  aux: (id: string): Expression => ({ op: 'ref_aux', id }),
   const: (value: number): Expression => ({ op: 'const', value }),
 
   add: (left: Expression, right: Expression): Expression => ({ op: 'add', left, right }),

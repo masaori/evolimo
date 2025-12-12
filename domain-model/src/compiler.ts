@@ -3,8 +3,8 @@
 import { writeFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import type { Expression, PhysicsRule, OutputIR, Operation } from './types.js';
-import { PARAMETER_GROUPS, PHYSICS_RULES, extractStateVars, VISUAL_MAPPING } from './definition.js';
+import type { Expression, PhysicsRule, OutputIR, Operation, InteractionIR } from './types.js';
+import { INTERACTIONS, PARAMETER_GROUPS, PHYSICS_RULES, STATE_VAR_ORDER, VISUAL_MAPPING } from './definition.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -46,6 +46,12 @@ function compileExpression(expr: Expression, ctx: CompilerContext): string {
         op: 'ref_param',
         param_info: { name: expr.id, group: expr.group },
       });
+      ctx.varMap.set(exprKey, resultVar);
+      return resultVar;
+
+    case 'ref_aux':
+      // Interaction outputs or other externally-defined variables.
+      resultVar = expr.id;
       ctx.varMap.set(exprKey, resultVar);
       return resultVar;
 
@@ -103,8 +109,53 @@ function compileRules(rules: PhysicsRule[]): OutputIR {
     varMap: new Map(),
   };
 
-  // Collect state variables
-  const stateVars = extractStateVars(rules);
+  // Collect state variables: include both targets and referenced states.
+  const stateVarSet = new Set<string>();
+  const updatedStates = new Set<string>();
+
+  function collectStates(expr: Expression): void {
+    if (expr.op === 'ref_state') {
+      stateVarSet.add(expr.id);
+      return;
+    }
+    if (expr.op === 'ref_param' || expr.op === 'ref_aux' || expr.op === 'const') {
+      return;
+    }
+    if ('left' in expr && 'right' in expr) {
+      collectStates(expr.left);
+      collectStates(expr.right);
+      return;
+    }
+    if ('value' in expr && typeof expr.value !== 'number') {
+      collectStates(expr.value);
+    }
+  }
+
+  for (const rule of rules) {
+    updatedStates.add(rule.target_state);
+    stateVarSet.add(rule.target_state);
+    collectStates(rule.expr);
+  }
+
+  // Include interaction-referenced state vars (positions/radius)
+  const interactions: InteractionIR[] = INTERACTIONS as unknown as InteractionIR[];
+  for (const interaction of interactions) {
+    if (interaction.kind === 'all_pairs_exclusion_2d') {
+      stateVarSet.add(interaction.pos.x);
+      stateVarSet.add(interaction.pos.y);
+      stateVarSet.add(interaction.radius);
+    }
+  }
+
+  // Produce ordered list of state vars.
+  const ordered: string[] = [];
+  for (const name of STATE_VAR_ORDER) {
+    if (stateVarSet.has(name)) ordered.push(name);
+  }
+  for (const name of Array.from(stateVarSet).sort()) {
+    if (!ordered.includes(name)) ordered.push(name);
+  }
+  const stateVars = ordered;
 
   // Collect parameter groups and parameters
   const groups: OutputIR['groups'] = {};
@@ -126,6 +177,8 @@ function compileRules(rules: PhysicsRule[]): OutputIR {
         throw new Error(`Unknown group: ${expr.group}`);
       }
       groupSet.add(expr.id);
+    } else if (expr.op === 'ref_aux' || expr.op === 'ref_state' || expr.op === 'const') {
+      return;
     } else if ('left' in expr && 'right' in expr) {
       collectParams(expr.left);
       collectParams(expr.right);
@@ -157,9 +210,21 @@ function compileRules(rules: PhysicsRule[]): OutputIR {
     });
   }
 
+  // Pass through any state vars that were referenced but not updated by rules.
+  for (const name of stateVars) {
+    if (updatedStates.has(name)) continue;
+    const passthrough = compileExpression({ op: 'ref_state', id: name }, ctx);
+    ctx.operations.push({
+      target: name,
+      op: 'add',
+      args: [passthrough],
+    });
+  }
+
   return {
     state_vars: stateVars,
     groups,
+    interactions,
     operations: ctx.operations,
   };
 }

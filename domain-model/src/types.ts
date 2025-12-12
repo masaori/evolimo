@@ -18,6 +18,7 @@ export interface ParameterGroups {
 export type Expression =
   | { op: 'ref_state'; id: string }
   | { op: 'ref_param'; id: string; group: string }
+  | { op: 'ref_aux'; id: string }
   | { op: 'const'; value: number }
   | { op: 'add'; left: Expression; right: Expression }
   | { op: 'sub'; left: Expression; right: Expression }
@@ -42,7 +43,29 @@ export interface OutputIR {
       params: string[];
     }
   >;
+  interactions?: InteractionIR[];
   operations: Operation[];
+}
+
+// Neighbor interaction definitions (computed outside the per-agent expression tree)
+export type InteractionIR = AllPairsExclusion2D;
+
+// Stage-A (O(N^2)) all-pairs exclusion force in 2D.
+// Produces per-agent force vectors (fx, fy) that can be referenced via ops.aux("<output>").
+export interface AllPairsExclusion2D {
+  kind: 'all_pairs_exclusion_2d';
+  // State var names for position.
+  pos: { x: string; y: string };
+  // State var name for radius ("cannot get closer than sum of radii").
+  radius: string;
+  // Optional hard cutoff (in world units). If omitted, considers all pairs.
+  cutoff?: number;
+  // Force strength multiplier.
+  strength: number;
+  // Small epsilon added to distance^2.
+  eps?: number;
+  // Output variable names (must be valid Rust identifiers).
+  outputs: { fx: string; fy: string };
 }
 
 export interface Operation {

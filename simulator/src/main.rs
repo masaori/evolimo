@@ -17,7 +17,7 @@ mod _gen {
 }
 
 use _gen::phenotype::PhenotypeEngine;
-use _gen::physics::update_physics;
+use _gen::physics::{update_physics, STATE_DIMS, STATE_VARS};
 use recorder::{EvoConfig, EvoHeader, EvoRecorder, PlaybackMeta};
 
 /// Default agent count used when `EVO_N_AGENTS` is not provided. Tuned for local
@@ -27,8 +27,6 @@ const N_AGENTS: usize = 1_000;
 const GENE_LEN: usize = 32;
 /// Hidden layer width for the phenotype network.
 const HIDDEN_LEN: usize = 64;
-/// Number of state variables stored per agent (pos_x, vel_x, energy).
-const STATE_DIMS: usize = 3;
 /// How many simulation steps to skip between frame saves.
 const SAVE_INTERVAL: u64 = 10;
 /// Maximum frames recorded in one run. Override `EVO_MAX_FRAMES` to change.
@@ -86,11 +84,11 @@ fn main() -> Result<()> {
 
     // Initialize agents
     let genes = Tensor::randn(0f32, 1f32, (n_agents, GENE_LEN), &device)?;
-    let mut state = Tensor::zeros((n_agents, STATE_DIMS), candle_core::DType::F32, &device)?; // [pos_x, vel_x, energy]
+    let mut state = Tensor::zeros((n_agents, STATE_DIMS), candle_core::DType::F32, &device)?;
 
     println!("🔧 Initialized {} agents", n_agents);
     println!("   Gene length: {}", GENE_LEN);
-    println!("   State variables: 3 (pos_x, vel_x, energy)\n");
+    println!("   State variables: {}\n", STATE_DIMS);
 
     // A. Phenotype expression (Genes -> Parameters)
     // Since genes are static during simulation, we can calculate this once.
@@ -105,11 +103,7 @@ fn main() -> Result<()> {
         EvoConfig {
             n_agents,
             state_dims: STATE_DIMS,
-            state_labels: vec![
-                "pos_x".to_string(),
-                "vel_x".to_string(),
-                "energy".to_string(),
-            ],
+            state_labels: STATE_VARS.iter().map(|s| (*s).to_string()).collect(),
             dt: DT,
         },
         PlaybackMeta {

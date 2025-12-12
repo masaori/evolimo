@@ -1,7 +1,7 @@
 // User-defined physics laws and genetic parameter structure
 
 import { ops } from './builder.js';
-import type { GroupConfig, PhysicsRule, ParameterGroups, VisualMapping } from './types.js';
+import type { AllPairsExclusion2D, GroupConfig, PhysicsRule, ParameterGroups, VisualMapping } from './types.js';
 
 // 1. Parameter group definitions (Phenotype Engine output structure)
 export const PARAMETER_GROUPS: ParameterGroups = {
@@ -33,17 +33,52 @@ const CONSTANTS = {
   one: ops.const(1.0),
 } as const;
 
+// Canonical state ordering used for the simulator state tensor.
+// Keep this stable to avoid reindexing bugs between TS IR and Rust.
+export const STATE_VAR_ORDER = ['pos_x', 'pos_y', 'vel_x', 'vel_y', 'size', 'energy'] as const;
+
+// 3. Neighbor interactions (computed outside the per-agent expression tree)
+// Stage-A implementation is O(N^2) all-pairs; suitable for validating the model.
+export const INTERACTIONS: AllPairsExclusion2D[] = [
+  {
+    kind: 'all_pairs_exclusion_2d',
+    pos: { x: 'pos_x', y: 'pos_y' },
+    radius: 'size',
+    cutoff: 50,
+    strength: 5.0,
+    eps: 1e-4,
+    outputs: { fx: 'f_excl_x', fy: 'f_excl_y' },
+  },
+];
+
 // 3. Physics update rules
 export const PHYSICS_RULES: PhysicsRule[] = [
-  // Velocity update: v = v - (v * drag * dt)
+  // Velocity update (X-axis): vel_x = vel_x - (vel_x * drag * dt)
   {
     target_state: 'vel_x',
-    expr: ops.sub(STATE_VARS.vel_x, ops.mul(ops.mul(STATE_VARS.vel_x, GENETIC_PARAMS.drag), CONSTANTS.dt)),
+    // Add neighbor exclusion force (computed by INTERACTIONS) before drag.
+    expr: ops.sub(
+      ops.add(STATE_VARS.vel_x, ops.mul(ops.aux('f_excl_x'), CONSTANTS.dt)),
+      ops.mul(ops.mul(STATE_VARS.vel_x, GENETIC_PARAMS.drag), CONSTANTS.dt)
+    ),
   },
-  // Position update: x = x + v * dt
+  // Velocity update (Y-axis): vel_y = vel_y - (vel_y * drag * dt)
+  {
+    target_state: 'vel_y',
+    expr: ops.sub(
+      ops.add(STATE_VARS.vel_y, ops.mul(ops.aux('f_excl_y'), CONSTANTS.dt)),
+      ops.mul(ops.mul(STATE_VARS.vel_y, GENETIC_PARAMS.drag), CONSTANTS.dt)
+    ),
+  },
+  // Position update (X-axis): pos_x = pos_x + vel_x * dt
   {
     target_state: 'pos_x',
     expr: ops.add(STATE_VARS.pos_x, ops.mul(STATE_VARS.vel_x, CONSTANTS.dt)),
+  },
+  // Position update (Y-axis): pos_y = pos_y + vel_y * dt
+  {
+    target_state: 'pos_y',
+    expr: ops.add(STATE_VARS.pos_y, ops.mul(STATE_VARS.vel_y, CONSTANTS.dt)),
   },
   // Energy consumption: energy = energy - metabolism * dt
   {
