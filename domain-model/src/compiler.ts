@@ -4,7 +4,7 @@ import { writeFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { Expression, PhysicsRule, OutputIR, Operation } from './types.js';
-import { GROUPS, rules, extractStateVars } from './definition.js';
+import { PARAMETER_GROUPS, PHYSICS_RULES, extractStateVars, VISUAL_MAPPING } from './definition.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -110,7 +110,7 @@ function compileRules(rules: PhysicsRule[]): OutputIR {
   const groups: OutputIR['groups'] = {};
   const paramsPerGroup = new Map<string, Set<string>>();
 
-  for (const [_key, config] of Object.entries(GROUPS)) {
+  for (const [_key, config] of Object.entries(PARAMETER_GROUPS)) {
     groups[config.name] = {
       activation: config.activation,
       params: [],
@@ -168,7 +168,7 @@ function compileRules(rules: PhysicsRule[]): OutputIR {
 function main(): void {
   console.log('🔧 Compiling TypeScript definitions to JSON IR...');
 
-  const ir = compileRules(rules);
+  const ir = compileRules(PHYSICS_RULES);
 
   const outputPath = join(__dirname, '../_gen/physics_ir.json');
   writeFileSync(outputPath, JSON.stringify(ir, null, 2), 'utf-8');
@@ -177,6 +177,11 @@ function main(): void {
   console.log(`   - State variables: ${ir.state_vars.length}`);
   console.log(`   - Parameter groups: ${Object.keys(ir.groups).length}`);
   console.log(`   - Operations: ${ir.operations.length}`);
+
+  // Export visual mapping configuration
+  const visualPath = join(__dirname, '../_gen/visual_mapping.json');
+  writeFileSync(visualPath, JSON.stringify(VISUAL_MAPPING, null, 2), 'utf-8');
+  console.log('✅ Generated:', visualPath);
 }
 
 main();

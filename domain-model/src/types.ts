@@ -52,3 +52,46 @@ export interface Operation {
   value?: number; // For const op
   param_info?: { name: string; group: string }; // For ref_param op
 }
+
+// Visual mapping types for simulator output visualization
+export type ColorMap = 'viridis' | 'plasma' | 'heat' | 'cool' | 'custom';
+export type SizeScale = 'linear' | 'sqrt' | 'log';
+export type BlendMode = 'multiply' | 'add' | 'average' | 'max' | 'min';
+
+// Single or multiple sources with optional weights
+export type VisualSource = 
+  | string  // Single source: state variable name
+  | {
+      sources: string[];  // Multiple state variables
+      weights?: number[];  // Optional weights (must sum to 1.0)
+      blend?: BlendMode;   // How to combine multiple sources
+    };
+
+export interface VisualMapping {
+  // Position mapping (required, single source per axis)
+  position: {
+    x: string;  // State variable name
+    y: string;  // State variable name
+  };
+  
+  // Size mapping (optional, supports multi-source)
+  size?: {
+    source: VisualSource;
+    range: [number, number];  // [min_radius, max_radius] in pixels
+    scale?: SizeScale;
+  };
+  
+  // Color mapping (optional, supports multi-source)
+  color?: {
+    source: VisualSource;
+    colormap: ColorMap;
+    range?: [number, number];  // Data value range for mapping
+    customColors?: string[];   // Custom color palette (RGB hex)
+  };
+  
+  // Opacity mapping (optional, supports multi-source)
+  opacity?: {
+    source: VisualSource;
+    range: [number, number];  // [0.0, 1.0]
+  };
+}
