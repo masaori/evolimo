@@ -3,7 +3,7 @@
 import { writeFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import type { Expression, PhysicsRule, OutputIR, Operation } from './builder.js';
+import type { Expression, PhysicsRule, OutputIR, Operation } from './types.js';
 import { GROUPS, rules, extractStateVars } from './definition.js';
 
 const __filename = fileURLToPath(import.meta.url);

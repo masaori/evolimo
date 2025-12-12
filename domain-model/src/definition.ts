@@ -1,12 +1,13 @@
 // User-defined physics laws and genetic parameter structure
 
-import { ops, type GroupConfig, type PhysicsRule } from './builder.js';
+import { ops } from './builder.js';
+import type { GroupConfig, PhysicsRule, ParameterGroups } from './types.js';
 
 // 1. Parameter group definitions (Phenotype Engine output structure)
-export const PARAMETER_GROUPS = {
-  ATTR: { name: 'attributes', activation: 'softmax' } as const satisfies GroupConfig,
-  PHYS: { name: 'physics', activation: 'tanh' } as const satisfies GroupConfig,
-} as const;
+export const PARAMETER_GROUPS: ParameterGroups = {
+  ATTR: { name: 'attributes', activation: 'softmax' } satisfies GroupConfig,
+  PHYS: { name: 'physics', activation: 'tanh' } satisfies GroupConfig,
+};
 
 // 2. State variables and parameter references
 const STATE_VARS = {
