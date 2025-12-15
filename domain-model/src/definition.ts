@@ -1,7 +1,7 @@
 // User-defined physics laws and genetic parameter structure
 
 import { ops } from './builder.js';
-import type { AllPairsExclusion2D, GroupConfig, PhysicsRule, ParameterGroups, VisualMapping } from './types.js';
+import type { AllPairsExclusion2D, GroupConfig, InitializationIR, PhysicsRule, ParameterGroups, VisualMapping } from './types.js';
 
 // 1. Parameter group definitions (Phenotype Engine output structure)
 export const PARAMETER_GROUPS: ParameterGroups = {
@@ -36,6 +36,21 @@ const CONSTANTS = {
 // Canonical state ordering used for the simulator state tensor.
 // Keep this stable to avoid reindexing bugs between TS IR and Rust.
 export const STATE_VAR_ORDER = ['pos_x', 'pos_y', 'vel_x', 'vel_y', 'size', 'energy'] as const;
+
+// 2.5. Initialization configuration (initial distributions + hyperparameters)
+// Keep this as the single source of truth for simulator initial conditions.
+export const INITIALIZATION: InitializationIR = {
+  state: {
+    pos_x: { kind: 'uniform', low: -200.0, high: 200.0 },
+    pos_y: { kind: 'uniform', low: -200.0, high: 200.0 },
+    vel_x: { kind: 'const', value: 0.0 },
+    vel_y: { kind: 'const', value: 0.0 },
+    size: { kind: 'const', value: 1.0 },
+    energy: { kind: 'const', value: 0.0 },
+  },
+  // This is used to sample the gene tensor (n_agents x gene_len).
+  genes: { kind: 'normal', mean: 0.0, std: 1.0 },
+};
 
 // 3. Neighbor interactions (computed outside the per-agent expression tree)
 // Stage-A implementation is O(N^2) all-pairs; suitable for validating the model.
@@ -97,9 +112,10 @@ export const VISUAL_MAPPING: VisualMapping = {
     // Multi-source example: size affected by both 'size' state and 'energy'
     source: {
       sources: ['size', 'energy'],
-      weights: [0.7, 0.3],  // 70% size, 30% energy
-      blend: 'multiply',
+      blend: 'average',
     },
+    // Normalize blended size source using this input range.
+    valueRange: [0, 100],
     range: [2, 20],
     scale: 'sqrt',
   },
@@ -107,8 +123,7 @@ export const VISUAL_MAPPING: VisualMapping = {
     // Multi-source example: color based on energy and velocity magnitude
     source: {
       sources: ['energy', 'vel_x', 'vel_y'],
-      weights: [0.7, 0.15, 0.15],
-      blend: 'add',
+      blend: 'average',
     },
     colormap: 'viridis',
     range: [0, 100],
@@ -116,6 +131,8 @@ export const VISUAL_MAPPING: VisualMapping = {
   opacity: {
     // Single source example
     source: 'energy',
+    // Normalize energy using this input range, then map into [0.3, 1.0].
+    valueRange: [0, 100],
     range: [0.3, 1.0],
   },
 };

@@ -3,8 +3,8 @@
 import { writeFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import type { Expression, PhysicsRule, OutputIR, Operation, InteractionIR } from './types.js';
-import { INTERACTIONS, PARAMETER_GROUPS, PHYSICS_RULES, STATE_VAR_ORDER, VISUAL_MAPPING } from './definition.js';
+import type { Expression, InitializationIR, PhysicsRule, OutputIR, Operation, InteractionIR } from './types.js';
+import { INITIALIZATION, INTERACTIONS, PARAMETER_GROUPS, PHYSICS_RULES, STATE_VAR_ORDER, VISUAL_MAPPING } from './definition.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -221,10 +221,19 @@ function compileRules(rules: PhysicsRule[]): OutputIR {
     });
   }
 
+  // Validate initialization coverage for state vars.
+  const initialization: InitializationIR = INITIALIZATION;
+  for (const name of stateVars) {
+    if (!(name in initialization.state)) {
+      throw new Error(`INITIALIZATION.state is missing state var: ${name}`);
+    }
+  }
+
   return {
     state_vars: stateVars,
     groups,
     interactions,
+    initialization,
     operations: ctx.operations,
   };
 }

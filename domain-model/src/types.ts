@@ -33,6 +33,19 @@ export interface PhysicsRule {
   expr: Expression;
 }
 
+// Initialization distribution specs
+export type Distribution =
+  | { kind: 'const'; value: number }
+  | { kind: 'uniform'; low: number; high: number }
+  | { kind: 'normal'; mean: number; std: number };
+
+export interface InitializationIR {
+  // Per-state-var initialization (each state var is a column vector in the simulator state tensor).
+  state: Record<string, Distribution>;
+  // Gene vector initialization for the phenotype engine input.
+  genes: Distribution;
+}
+
 // IR (Intermediate Representation) types for JSON output
 export interface OutputIR {
   state_vars: string[];
@@ -44,6 +57,7 @@ export interface OutputIR {
     }
   >;
   interactions?: InteractionIR[];
+  initialization?: InitializationIR;
   operations: Operation[];
 }
 
@@ -77,9 +91,9 @@ export interface Operation {
 }
 
 // Visual mapping types for simulator output visualization
-export type ColorMap = 'viridis' | 'plasma' | 'heat' | 'cool' | 'custom';
+export type ColorMap = 'viridis' | 'plasma' | 'heat' | 'cool';
 export type SizeScale = 'linear' | 'sqrt' | 'log';
-export type BlendMode = 'multiply' | 'add' | 'average' | 'max' | 'min';
+export type BlendMode = 'add' | 'average' | 'max' | 'min';
 
 // Single or multiple sources with optional weights
 export type VisualSource = 
@@ -100,6 +114,9 @@ export interface VisualMapping {
   // Size mapping (optional, supports multi-source)
   size?: {
     source: VisualSource;
+    // Input value range used to normalize the (possibly blended) source into [0, 1].
+    // If omitted, the source is assumed to already be normalized.
+    valueRange?: [number, number];
     range: [number, number];  // [min_radius, max_radius] in pixels
     scale?: SizeScale;
   };
@@ -109,12 +126,14 @@ export interface VisualMapping {
     source: VisualSource;
     colormap: ColorMap;
     range?: [number, number];  // Data value range for mapping
-    customColors?: string[];   // Custom color palette (RGB hex)
   };
   
   // Opacity mapping (optional, supports multi-source)
   opacity?: {
     source: VisualSource;
+    // Input value range used to normalize the (possibly blended) source into [0, 1].
+    // If omitted, the source is assumed to already be normalized.
+    valueRange?: [number, number];
     range: [number, number];  // [0.0, 1.0]
   };
 }

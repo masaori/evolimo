@@ -1,7 +1,7 @@
 // Main entry point for evolution simulator
 
 use anyhow::Result;
-use candle_core::{Device, Tensor};
+use candle_core::Device;
 use candle_nn::VarBuilder;
 use std::time::Instant;
 
@@ -83,8 +83,8 @@ fn main() -> Result<()> {
     let phenotype_engine = PhenotypeEngine::new(vs, GENE_LEN, HIDDEN_LEN)?;
 
     // Initialize agents
-    let genes = Tensor::randn(0f32, 1f32, (n_agents, GENE_LEN), &device)?;
-    let mut state = Tensor::zeros((n_agents, STATE_DIMS), candle_core::DType::F32, &device)?;
+    let genes = _gen::phenotype::init_genes(n_agents, GENE_LEN, &device)?;
+    let mut state = _gen::physics::init_state(n_agents, &device)?;
 
     println!("🔧 Initialized {} agents", n_agents);
     println!("   Gene length: {}", GENE_LEN);

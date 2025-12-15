@@ -12,7 +12,32 @@ struct ConfigIR {
     groups: HashMap<String, GroupConfig>,
     #[serde(default)]
     interactions: Vec<Interaction>,
+    #[serde(default)]
+    initialization: Option<InitializationIR>,
     operations: Vec<Operation>,
+}
+
+#[derive(Deserialize, Debug)]
+struct InitializationIR {
+    state: HashMap<String, Distribution>,
+    genes: Distribution,
+}
+
+#[derive(Deserialize, Debug)]
+#[serde(tag = "kind")]
+enum Distribution {
+    #[serde(rename = "const")]
+    Const { value: f64 },
+    #[serde(rename = "uniform")]
+    Uniform { low: f64, high: f64 },
+    #[serde(rename = "normal")]
+    Normal { mean: f64, std: f64 },
+    // Legacy sugar (kept for backward compatibility with older IR files).
+    #[serde(rename = "zeros")]
+    Zeros,
+    // Legacy sugar (kept for backward compatibility with older IR files).
+    #[serde(rename = "ones")]
+    Ones,
 }
 
 #[derive(Deserialize, Debug)]
@@ -169,6 +194,53 @@ fn generate_phenotype(ir: &ConfigIR, out_dir: &Path) {
     code.push_str("    }\n");
     code.push_str("}\n");
 
+    // Gene initialization helper.
+    code.push_str("\n#[allow(dead_code)]\n");
+    code.push_str("pub fn init_genes(\n");
+    code.push_str("    n_agents: usize,\n");
+    code.push_str("    gene_len: usize,\n");
+    code.push_str("    device: &candle_core::Device,\n");
+    code.push_str(") -> candle_core::Result<candle_core::Tensor> {\n");
+
+    let genes_dist = ir.initialization.as_ref().map(|i| &i.genes);
+
+    match genes_dist {
+        None => {
+            code.push_str(
+                "    candle_core::Tensor::randn(0.0f32, 1.0f32, (n_agents, gene_len), device)\n",
+            );
+        }
+        Some(genes_dist) => match genes_dist {
+        Distribution::Const { value } => {
+            code.push_str(&format!(
+                "    let t = candle_core::Tensor::new(&[{}f32], device)?;\n",
+                *value as f32
+            ));
+            code.push_str("    t.broadcast_as((n_agents, gene_len))\n");
+        }
+        Distribution::Uniform { low, high } => {
+            code.push_str(&format!(
+                "    candle_core::Tensor::rand({}f32, {}f32, (n_agents, gene_len), device)\n",
+                *low as f32, *high as f32
+            ));
+        }
+        Distribution::Normal { mean, std } => {
+            code.push_str(&format!(
+                "    candle_core::Tensor::randn({}f32, {}f32, (n_agents, gene_len), device)\n",
+                *mean as f32, *std as f32
+            ));
+        }
+        Distribution::Zeros => {
+            code.push_str("    candle_core::Tensor::zeros((n_agents, gene_len), candle_core::DType::F32, device)\n");
+        }
+        Distribution::Ones => {
+            code.push_str("    candle_core::Tensor::ones((n_agents, gene_len), candle_core::DType::F32, device)\n");
+        }
+        },
+    }
+
+    code.push_str("}\n");
+
     fs::write(out_dir.join("phenotype.rs"), code).expect("Failed to write phenotype.rs");
 }
 
@@ -184,6 +256,79 @@ fn generate_physics(ir: &ConfigIR, out_dir: &Path) {
         code.push_str(&format!("    \"{}\",\n", name));
     }
     code.push_str("];\n\n");
+
+    // State initialization helper.
+    code.push_str("#[allow(dead_code)]\n");
+    code.push_str("pub fn init_state(\n");
+    code.push_str("    n_agents: usize,\n");
+    code.push_str("    device: &candle_core::Device,\n");
+    code.push_str(") -> candle_core::Result<candle_core::Tensor> {\n");
+
+    if let Some(init) = ir.initialization.as_ref() {
+        for name in &ir.state_vars {
+            let dist = init
+                .state
+                .get(name)
+                .unwrap_or_else(|| panic!("initialization.state missing entry for {}", name));
+
+            let var = format!("init_{}", name);
+            match dist {
+                Distribution::Const { value } => {
+                    code.push_str(&format!(
+                        "    let {} = candle_core::Tensor::new(&[{}f32], device)?.broadcast_as((n_agents, 1))?;\n",
+                        var,
+                        *value as f32
+                    ));
+                }
+                Distribution::Uniform { low, high } => {
+                    code.push_str(&format!(
+                        "    let {} = candle_core::Tensor::rand({}f32, {}f32, (n_agents, 1), device)?;\n",
+                        var,
+                        *low as f32,
+                        *high as f32
+                    ));
+                }
+                Distribution::Normal { mean, std } => {
+                    code.push_str(&format!(
+                        "    let {} = candle_core::Tensor::randn({}f32, {}f32, (n_agents, 1), device)?;\n",
+                        var,
+                        *mean as f32,
+                        *std as f32
+                    ));
+                }
+                Distribution::Zeros => {
+                    code.push_str(&format!(
+                        "    let {} = candle_core::Tensor::zeros((n_agents, 1), candle_core::DType::F32, device)?;\n",
+                        var
+                    ));
+                }
+                Distribution::Ones => {
+                    code.push_str(&format!(
+                        "    let {} = candle_core::Tensor::ones((n_agents, 1), candle_core::DType::F32, device)?;\n",
+                        var
+                    ));
+                }
+            }
+        }
+
+        code.push_str("\n    candle_core::Tensor::cat(&[\n");
+        for name in &ir.state_vars {
+            code.push_str(&format!("        &init_{},\n", name));
+        }
+        code.push_str("    ], 1)\n");
+    } else {
+        // Fallback for older IR without initialization.
+        code.push_str("    // Fallback defaults (domain-model initialization not provided)\n");
+        code.push_str("    let pos_x = candle_core::Tensor::rand(-200.0f32, 200.0f32, (n_agents, 1), device)?;\n");
+        code.push_str("    let pos_y = candle_core::Tensor::rand(-200.0f32, 200.0f32, (n_agents, 1), device)?;\n");
+        code.push_str("    let vel_x = candle_core::Tensor::zeros((n_agents, 1), candle_core::DType::F32, device)?;\n");
+        code.push_str("    let vel_y = candle_core::Tensor::zeros((n_agents, 1), candle_core::DType::F32, device)?;\n");
+        code.push_str("    let size = candle_core::Tensor::ones((n_agents, 1), candle_core::DType::F32, device)?;\n");
+        code.push_str("    let energy = candle_core::Tensor::zeros((n_agents, 1), candle_core::DType::F32, device)?;\n\n");
+        code.push_str("    candle_core::Tensor::cat(&[&pos_x, &pos_y, &vel_x, &vel_y, &size, &energy], 1)\n");
+    }
+
+    code.push_str("}\n\n");
 
     // Function signature
     code.push_str("#[allow(dead_code)]\n");
