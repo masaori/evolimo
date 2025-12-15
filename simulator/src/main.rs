@@ -3,6 +3,11 @@
 use anyhow::Result;
 use candle_core::Device;
 use candle_nn::VarBuilder;
+use clap::Parser;
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc,
+};
 use std::time::Instant;
 
 mod recorder;
@@ -18,7 +23,7 @@ mod _gen {
 
 use _gen::phenotype::PhenotypeEngine;
 use _gen::physics::{update_physics, STATE_DIMS, STATE_VARS};
-use recorder::{EvoConfig, EvoHeader, EvoRecorder, PlaybackMeta};
+use recorder::{EvoConfig, EvoHeader, EvoRecorder};
 
 /// Default agent count used when `EVO_N_AGENTS` is not provided. Tuned for local
 /// development; override for large-scale runs.
@@ -27,24 +32,23 @@ const N_AGENTS: usize = 1_000;
 const GENE_LEN: usize = 32;
 /// Hidden layer width for the phenotype network.
 const HIDDEN_LEN: usize = 64;
-/// How many simulation steps to skip between frame saves.
-const SAVE_INTERVAL: u64 = 10;
-/// Maximum frames recorded in one run. Override `EVO_MAX_FRAMES` to change.
-const MAX_FRAMES: u64 = 10;
 /// Simulation timestep used for metadata only.
 const DT: f32 = 0.1;
+/// How often to flush the output file during an infinite run.
+const FLUSH_INTERVAL_FRAMES: u64 = 60;
+
+#[derive(Debug, Parser)]
+#[command(name = "evolimo-simulator")]
+struct Args {
+    /// Stop after this many simulation frames. If omitted, runs until Ctrl+C.
+    #[arg(long)]
+    max_sim_frames: Option<u64>,
+}
 
 fn env_or_default_usize(key: &str, default: usize) -> usize {
     std::env::var(key)
         .ok()
         .and_then(|v| v.parse::<usize>().ok())
-        .unwrap_or(default)
-}
-
-fn env_or_default_u64(key: &str, default: u64) -> u64 {
-    std::env::var(key)
-        .ok()
-        .and_then(|v| v.parse::<u64>().ok())
         .unwrap_or(default)
 }
 
@@ -68,6 +72,8 @@ fn select_device() -> Device {
 }
 
 fn main() -> Result<()> {
+    let args = Args::parse();
+
     println!("🧬 Evolimo - Evolution Simulator");
     println!("================================\n");
 
@@ -75,7 +81,6 @@ fn main() -> Result<()> {
     println!("📍 Device: {:?}\n", device);
 
     let n_agents = env_or_default_usize("EVO_N_AGENTS", N_AGENTS);
-    let max_frames = env_or_default_u64("EVO_MAX_FRAMES", MAX_FRAMES);
 
     // Initialize phenotype engine
     let varmap = candle_nn::VarMap::new();
@@ -94,55 +99,61 @@ fn main() -> Result<()> {
     // Since genes are static during simulation, we can calculate this once.
     let params = phenotype_engine.forward(&genes)?;
 
-    debug_assert!(
-        max_frames <= usize::MAX as u64,
-        "EVO_MAX_FRAMES truncated on this platform"
-    );
-    let total_frames = max_frames as usize;
-    let header = EvoHeader::new(
-        EvoConfig {
-            n_agents,
-            state_dims: STATE_DIMS,
-            state_labels: STATE_VARS.iter().map(|s| (*s).to_string()).collect(),
-            dt: DT,
-        },
-        PlaybackMeta {
-            total_frames,
-            save_interval: SAVE_INTERVAL,
-        },
-    );
+    let header = EvoHeader::new(EvoConfig {
+        n_agents,
+        state_dims: STATE_DIMS,
+        state_labels: STATE_VARS.iter().map(|s| (*s).to_string()).collect(),
+        dt: DT,
+    });
 
     let output_path = "sim_output.evo";
     let mut recorder = EvoRecorder::create(output_path, header)?;
-    println!("💾 Recording frames to {output_path} (every {SAVE_INTERVAL} steps)\n");
+    println!("💾 Recording sim frames to {output_path}\n");
 
-    println!(
-        "▶️  Running simulation until {} frames are recorded...\n",
-        max_frames
-    );
+    match args.max_sim_frames {
+        Some(n) => println!("▶️  Running simulation until {n} sim frames are recorded...\n"),
+        None => println!("▶️  Running simulation indefinitely (Ctrl+C to stop)...\n"),
+    }
 
-    let mut step = 0u64;
+    let stop = Arc::new(AtomicBool::new(false));
+    {
+        let stop = Arc::clone(&stop);
+        ctrlc::set_handler(move || {
+            stop.store(true, Ordering::SeqCst);
+        })?;
+    }
+
+    let mut sim_frame = 0u64;
     let mut last_report_time = Instant::now();
-    let mut steps_since_last_report = 0u64;
+    let mut frames_since_last_report = 0u64;
 
     loop {
+        if stop.load(Ordering::SeqCst) {
+            recorder.flush()?;
+            println!(
+                "✅ Recorded {} sim frames. Output: {}",
+                recorder.frames_written(),
+                output_path
+            );
+            return Ok(());
+        }
+
         // B. Physics update (State + Parameters -> New State)
         let new_state = update_physics(&state, &params.physics, &params.attributes)?;
 
         // Explicitly drop old tensors to free GPU memory
         state = new_state;
 
-        // Progress report
-        step += 1;
-        steps_since_last_report += 1;
+        // Record every simulation frame.
+        recorder.write_frame(&state)?;
+        sim_frame += 1;
+        frames_since_last_report += 1;
 
-        if step % SAVE_INTERVAL == 0 {
-            recorder.write_frame(&state)?;
-
-            if recorder.frames_written() >= max_frames {
+        if let Some(max_sim_frames) = args.max_sim_frames {
+            if sim_frame >= max_sim_frames {
                 recorder.flush()?;
                 println!(
-                    "✅ Recorded {} frames. Output: {}",
+                    "✅ Recorded {} sim frames. Output: {}",
                     recorder.frames_written(),
                     output_path
                 );
@@ -150,19 +161,23 @@ fn main() -> Result<()> {
             }
         }
 
-        if step % 20 == 0 {
+        if sim_frame % FLUSH_INTERVAL_FRAMES == 0 {
+            recorder.flush()?;
+        }
+
+        if sim_frame % 20 == 0 {
             // Force GPU synchronization by reading data to CPU
             let energy_sum: f32 = state.narrow(1, 2, 1)?.sum_all()?.to_vec0()?;
 
             let elapsed = last_report_time.elapsed().as_secs_f64();
-            let fps = steps_since_last_report as f64 / elapsed;
+            let fps = frames_since_last_report as f64 / elapsed;
             println!(
-                "  Step {}: Total energy = {:.2}, FPS = {:.1}",
-                step, energy_sum, fps
+                "  Sim frame {}: Total energy = {:.2}, FPS = {:.1}",
+                sim_frame, energy_sum, fps
             );
 
             last_report_time = Instant::now();
-            steps_since_last_report = 0;
+            frames_since_last_report = 0;
         }
     }
 }

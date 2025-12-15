@@ -8,7 +8,7 @@ TypeScript定義からRustコードを自動生成する生物進化シミュレ
 evolimo/
 ├── domain-model/      # TypeScript DSL定義層
 ├── simulator/         # Rust高性能シミュレーション層
-└── visualizer/        # 可視化層 (Future work)
+└── visualizer/        # 可視化層
 ```
 
 ## Quick Start
@@ -28,9 +28,22 @@ npm run check-types  # 型チェック
 ```bash
 cd simulator
 cargo build          # JSONからRustコード生成 & ビルド
-cargo run            # シミュレーション実行
+cargo run -- --max-sim-frames 600  # シミュレーション実行 (例)
 cargo fmt            # フォーマット
 cargo clippy         # リント
+```
+
+- `--max-sim-frames`を省略すると無限ループで実行します (Ctrl+Cで停止)
+- 出力は `simulator/sim_output.evo`
+
+### 3. Visualizer (可視化)
+
+```bash
+cd visualizer
+cargo run -- \
+	--sim-fps 60 \
+	--input ../simulator/sim_output.evo \
+	--mapping ../domain-model/_gen/visual_mapping.json
 ```
 
 ## アーキテクチャ

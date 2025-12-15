@@ -30,9 +30,9 @@ struct Args {
     #[arg(long, default_value = "../domain-model/_gen/visual_mapping.json")]
     mapping: PathBuf,
 
-    /// Draw FPS (if rendering can't keep up, frames will be skipped)
+    /// Simulation playback FPS
     #[arg(long, default_value_t = 60.0)]
-    fps: f64,
+    sim_fps: f64,
 }
 
 fn colormap_rgb(name: &str, t01: f32) -> Result<[u8; 3]> {
@@ -50,8 +50,8 @@ fn colormap_rgb(name: &str, t01: f32) -> Result<[u8; 3]> {
 
 fn main() -> Result<()> {
     let args = Args::parse();
-    if !(args.fps.is_finite() && args.fps > 0.0) {
-        bail!("--fps must be a positive finite number");
+    if !(args.sim_fps.is_finite() && args.sim_fps > 0.0) {
+        bail!("--sim-fps must be a positive finite number");
     }
 
     let mapping_bytes = fs::read(&args.mapping)
@@ -86,7 +86,7 @@ fn main() -> Result<()> {
     let n_agents = evo.header.config.n_agents;
     let state_dims = evo.header.config.state_dims;
 
-    let frame_dt = Duration::from_secs_f64(1.0 / args.fps);
+    let frame_dt = Duration::from_secs_f64(1.0 / args.sim_fps);
     let start = Instant::now();
     let mut next_tick = start;
 
@@ -127,7 +127,7 @@ fn main() -> Result<()> {
                     }
 
                     let elapsed = start.elapsed().as_secs_f64();
-                    let desired = (elapsed * args.fps) as usize;
+                    let desired = (elapsed * args.sim_fps) as usize;
                     let frame_index = desired.min(total_frames.saturating_sub(1));
 
                     if now.duration_since(title_last_update) >= title_update_dt {

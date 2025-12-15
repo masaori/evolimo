@@ -21,27 +21,19 @@ pub struct EvoConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct PlaybackMeta {
-    pub total_frames: usize,
-    pub save_interval: u64,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct EvoHeader {
     pub version: u32,
     pub timestamp: String,
     pub config: EvoConfig,
-    pub playback: PlaybackMeta,
 }
 
 impl EvoHeader {
-    pub fn new(config: EvoConfig, playback: PlaybackMeta) -> Self {
+    pub fn new(config: EvoConfig) -> Self {
         let now: DateTime<Utc> = Utc::now();
         Self {
             version: 1,
             timestamp: now.to_rfc3339(),
             config,
-            playback,
         }
     }
 }
@@ -135,22 +127,16 @@ mod tests {
             fs::remove_file(&tmp_path)?;
         }
 
-        let header = EvoHeader::new(
-            EvoConfig {
-                n_agents: 2,
-                state_dims: 3,
-                state_labels: vec![
-                    "pos_x".to_string(),
-                    "vel_x".to_string(),
-                    "energy".to_string(),
-                ],
-                dt: 0.1,
-            },
-            PlaybackMeta {
-                total_frames: 1,
-                save_interval: 1,
-            },
-        );
+        let header = EvoHeader::new(EvoConfig {
+            n_agents: 2,
+            state_dims: 3,
+            state_labels: vec![
+                "pos_x".to_string(),
+                "vel_x".to_string(),
+                "energy".to_string(),
+            ],
+            dt: 0.1,
+        });
 
         let mut recorder = EvoRecorder::create(&tmp_path, header.clone())?;
         let device = Device::Cpu;

@@ -18,20 +18,12 @@ pub struct EvoConfig {
 }
 
 #[derive(Debug, Clone, Deserialize)]
-pub struct PlaybackMeta {
-    pub total_frames: usize,
-    #[allow(dead_code)]
-    pub save_interval: u64,
-}
-
-#[derive(Debug, Clone, Deserialize)]
 pub struct EvoHeader {
     #[allow(dead_code)]
     pub version: u32,
     #[allow(dead_code)]
     pub timestamp: String,
     pub config: EvoConfig,
-    pub playback: PlaybackMeta,
 }
 
 pub struct EvoFile {
@@ -95,12 +87,8 @@ impl EvoFile {
         body_len / self.frame_bytes
     }
 
-    pub fn total_frames_declared(&self) -> usize {
-        self.header.playback.total_frames
-    }
-
     pub fn total_frames(&self) -> usize {
-        self.total_frames_available().min(self.total_frames_declared())
+        self.total_frames_available()
     }
 
     pub fn state_index(&self, label: &str) -> Option<usize> {
