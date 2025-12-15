@@ -13,6 +13,7 @@ simulator/*_output.evo
 # Visualizer
 visualizer/node_modules
 visualizer/dist
+visualizer/target
 
 # Editor
 .vscode/*
