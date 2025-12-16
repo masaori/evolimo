@@ -1,10 +1,8 @@
 # Domain Model (TypeScript)
-domain-model/_gen/*.json
 domain-model/node_modules
 domain-model/dist
 
 # Simulator (Rust)
-simulator/src/_gen/*.rs
 simulator/target
 simulator/Cargo.lock
 simulator/scripts/generators/target

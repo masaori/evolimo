@@ -1,0 +1,50 @@
+{
+  "position": {
+    "x": "pos_x",
+    "y": "pos_y"
+  },
+  "size": {
+    "source": {
+      "sources": [
+        "size",
+        "energy"
+      ],
+      "blend": "average"
+    },
+    "valueRange": [
+      0,
+      100
+    ],
+    "range": [
+      2,
+      20
+    ],
+    "scale": "sqrt"
+  },
+  "color": {
+    "source": {
+      "sources": [
+        "energy",
+        "vel_x",
+        "vel_y"
+      ],
+      "blend": "average"
+    },
+    "colormap": "viridis",
+    "range": [
+      0,
+      100
+    ]
+  },
+  "opacity": {
+    "source": "energy",
+    "valueRange": [
+      0,
+      100
+    ],
+    "range": [
+      0.3,
+      1
+    ]
+  }
+}

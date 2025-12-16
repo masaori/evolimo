@@ -1,7 +1,18 @@
 // User-defined physics laws and genetic parameter structure
 
 import { ops } from './builder.js';
-import type { AllPairsExclusion2D, GroupConfig, InitializationIR, PhysicsRule, ParameterGroups, VisualMapping } from './types.js';
+import type {
+  AllPairsExclusion2D,
+  BoundaryCondition,
+  GroupConfig,
+  InitializationIR,
+  PhysicsRule,
+  ParameterGroups,
+  VisualMapping,
+} from './types.js';
+
+const WORLD_SIZE_X = 1024.0;
+const WORLD_SIZE_Y = 800.0;
 
 // 1. Parameter group definitions (Phenotype Engine output structure)
 export const PARAMETER_GROUPS: ParameterGroups = {
@@ -41,8 +52,8 @@ export const STATE_VAR_ORDER = ['pos_x', 'pos_y', 'vel_x', 'vel_y', 'size', 'ene
 // Keep this as the single source of truth for simulator initial conditions.
 export const INITIALIZATION: InitializationIR = {
   state: {
-    pos_x: { kind: 'uniform', low: -200.0, high: 200.0 },
-    pos_y: { kind: 'uniform', low: -200.0, high: 200.0 },
+    pos_x: { kind: 'uniform', low: -WORLD_SIZE_X / 2, high: WORLD_SIZE_X / 2 },
+    pos_y: { kind: 'uniform', low: -WORLD_SIZE_Y / 2, high: WORLD_SIZE_Y / 2 },
     vel_x: { kind: 'const', value: 0.0 },
     vel_y: { kind: 'const', value: 0.0 },
     size: { kind: 'const', value: 1.0 },
@@ -51,6 +62,13 @@ export const INITIALIZATION: InitializationIR = {
   // This is used to sample the gene tensor (n_agents x gene_len).
   genes: { kind: 'normal', mean: 0.0, std: 1.0 },
 };
+
+// 2.6. Boundary conditions
+// For a torus world, positions are wrapped into [min, max].
+export const BOUNDARY_CONDITIONS: BoundaryCondition[] = [
+  { target_state: 'pos_x', kind: 'torus', range: [-WORLD_SIZE_X / 2, WORLD_SIZE_X / 2] },
+  { target_state: 'pos_y', kind: 'torus', range: [-WORLD_SIZE_Y / 2, WORLD_SIZE_Y / 2] },
+];
 
 // 3. Neighbor interactions (computed outside the per-agent expression tree)
 // Stage-A implementation is O(N^2) all-pairs; suitable for validating the model.

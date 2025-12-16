@@ -89,6 +89,19 @@ impl EvoRecorder {
 
         let frame = state.to_vec2::<f32>()?;
         let flat: Vec<f32> = frame.into_iter().flatten().collect();
+        self.write_frame_f32(&flat)
+    }
+
+    pub fn write_frame_f32(&mut self, flat: &[f32]) -> Result<()> {
+        let expected = self.header.config.n_agents * self.header.config.state_dims;
+        if flat.len() != expected {
+            bail!(
+                "Frame length mismatch: expected {}, got {}",
+                expected,
+                flat.len()
+            );
+        }
+
         let byte_slice = unsafe {
             std::slice::from_raw_parts(
                 flat.as_ptr() as *const u8,

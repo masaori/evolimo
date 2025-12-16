@@ -4,7 +4,15 @@ import { writeFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { Expression, InitializationIR, PhysicsRule, OutputIR, Operation, InteractionIR } from './types.js';
-import { INITIALIZATION, INTERACTIONS, PARAMETER_GROUPS, PHYSICS_RULES, STATE_VAR_ORDER, VISUAL_MAPPING } from './definition.js';
+import {
+  BOUNDARY_CONDITIONS,
+  INITIALIZATION,
+  INTERACTIONS,
+  PARAMETER_GROUPS,
+  PHYSICS_RULES,
+  STATE_VAR_ORDER,
+  VISUAL_MAPPING,
+} from './definition.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -233,6 +241,7 @@ function compileRules(rules: PhysicsRule[]): OutputIR {
     state_vars: stateVars,
     groups,
     interactions,
+    boundary_conditions: BOUNDARY_CONDITIONS,
     initialization,
     operations: ctx.operations,
   };

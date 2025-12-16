@@ -46,6 +46,17 @@ export interface InitializationIR {
   genes: Distribution;
 }
 
+// Boundary condition definitions.
+export type BoundaryType = 'torus' | 'clamp' | 'none';
+
+export interface BoundaryCondition {
+  // State var name to apply boundary to (e.g. pos_x, pos_y)
+  target_state: string;
+  kind: BoundaryType;
+  // World range [min, max]. For torus, this defines the period width (max - min).
+  range: [number, number];
+}
+
 // IR (Intermediate Representation) types for JSON output
 export interface OutputIR {
   state_vars: string[];
@@ -57,6 +68,7 @@ export interface OutputIR {
     }
   >;
   interactions?: InteractionIR[];
+  boundary_conditions?: BoundaryCondition[];
   initialization?: InitializationIR;
   operations: Operation[];
 }
