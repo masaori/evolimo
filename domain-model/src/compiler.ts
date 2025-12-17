@@ -3,13 +3,12 @@
 import { writeFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import type { Expression, InitializationIR, PhysicsRule, OutputIR, Operation, InteractionIR } from './types.js';
+import type { DynamicsRule, Expression, InitializationIR, OutputIR, Operation } from './types.js';
 import {
   BOUNDARY_CONDITIONS,
   INITIALIZATION,
-  INTERACTIONS,
   PARAMETER_GROUPS,
-  PHYSICS_RULES,
+  DYNAMICS_RULES,
   STATE_VAR_ORDER,
   VISUAL_MAPPING,
 } from './definition.js';
@@ -89,6 +88,46 @@ function compileExpression(expr: Expression, ctx: CompilerContext): string {
       return resultVar;
     }
 
+    case 'sqrt': {
+      const val = compileExpression(expr.value, ctx);
+      resultVar = getTempVar(ctx);
+      ctx.operations.push({
+        target: resultVar,
+        op: 'sqrt',
+        args: [val],
+      });
+      ctx.varMap.set(exprKey, resultVar);
+      return resultVar;
+    }
+
+    case 'transpose': {
+      const val = compileExpression(expr.value, ctx);
+      resultVar = getTempVar(ctx);
+      ctx.operations.push({
+        target: resultVar,
+        op: 'transpose',
+        args: [val],
+        dim0: expr.dim0,
+        dim1: expr.dim1,
+      });
+      ctx.varMap.set(exprKey, resultVar);
+      return resultVar;
+    }
+
+    case 'sum': {
+      const val = compileExpression(expr.value, ctx);
+      resultVar = getTempVar(ctx);
+      ctx.operations.push({
+        target: resultVar,
+        op: 'sum',
+        args: [val],
+        dim: expr.dim,
+        keepdim: expr.keepdim,
+      });
+      ctx.varMap.set(exprKey, resultVar);
+      return resultVar;
+    }
+
     case 'relu':
     case 'neg': {
       const val = compileExpression(expr.value, ctx);
@@ -110,7 +149,7 @@ function compileExpression(expr: Expression, ctx: CompilerContext): string {
 }
 
 // Compile all rules to IR
-function compileRules(rules: PhysicsRule[]): OutputIR {
+function compileRules(rules: DynamicsRule[]): OutputIR {
   const ctx: CompilerContext = {
     tempVarCounter: 0,
     operations: [],
@@ -143,16 +182,6 @@ function compileRules(rules: PhysicsRule[]): OutputIR {
     updatedStates.add(rule.target_state);
     stateVarSet.add(rule.target_state);
     collectStates(rule.expr);
-  }
-
-  // Include interaction-referenced state vars (positions/radius)
-  const interactions: InteractionIR[] = INTERACTIONS as unknown as InteractionIR[];
-  for (const interaction of interactions) {
-    if (interaction.kind === 'all_pairs_exclusion_2d') {
-      stateVarSet.add(interaction.pos.x);
-      stateVarSet.add(interaction.pos.y);
-      stateVarSet.add(interaction.radius);
-    }
   }
 
   // Produce ordered list of state vars.
@@ -240,7 +269,6 @@ function compileRules(rules: PhysicsRule[]): OutputIR {
   return {
     state_vars: stateVars,
     groups,
-    interactions,
     boundary_conditions: BOUNDARY_CONDITIONS,
     initialization,
     operations: ctx.operations,
@@ -251,11 +279,10 @@ function compileRules(rules: PhysicsRule[]): OutputIR {
 function main(): void {
   console.log('🔧 Compiling TypeScript definitions to JSON IR...');
 
-  const ir = compileRules(PHYSICS_RULES);
+  const ir = compileRules(DYNAMICS_RULES);
 
-  const outputPath = join(__dirname, '../_gen/physics_ir.json');
+  const outputPath = join(__dirname, '../_gen/dynamics_ir.json');
   writeFileSync(outputPath, JSON.stringify(ir, null, 2), 'utf-8');
-
   console.log('✅ Generated:', outputPath);
   console.log(`   - State variables: ${ir.state_vars.length}`);
   console.log(`   - Parameter groups: ${Object.keys(ir.groups).length}`);

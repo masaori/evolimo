@@ -2,11 +2,10 @@
 
 import { ops } from './builder.js';
 import type {
-  AllPairsExclusion2D,
   BoundaryCondition,
+  DynamicsRule,
   GroupConfig,
   InitializationIR,
-  PhysicsRule,
   ParameterGroups,
   VisualMapping,
 } from './types.js';
@@ -27,26 +26,24 @@ const STATE_VARS = {
   vel_x: ops.state('vel_x'),
   vel_y: ops.state('vel_y'),
   size: ops.state('size'),
-  energy: ops.state('energy'),
 } as const;
 
 const GENETIC_PARAMS = {
-  // ATTR group: metabolism, move_cost (trade-off relationship, sum=1.0)
-  metabolism: ops.param('metabolism', PARAMETER_GROUPS.ATTR.name),
-  move_cost: ops.param('move_cost', PARAMETER_GROUPS.ATTR.name),
-
-  // PHYS group: physical characteristics (range: -1.0 to 1.0)
-  drag: ops.param('drag_coeff', PARAMETER_GROUPS.PHYS.name),
+  // Keep at least one param per group so the phenotype engine stays well-formed.
+  dummy_attr: ops.param('dummy_attr', PARAMETER_GROUPS.ATTR.name),
+  grav_g: ops.param('grav_g', PARAMETER_GROUPS.PHYS.name),
 } as const;
 
 const CONSTANTS = {
   dt: ops.const(0.1),
   one: ops.const(1.0),
+  eps: ops.const(1e-4),
+  zero: ops.const(0.0),
 } as const;
 
 // Canonical state ordering used for the simulator state tensor.
 // Keep this stable to avoid reindexing bugs between TS IR and Rust.
-export const STATE_VAR_ORDER = ['pos_x', 'pos_y', 'vel_x', 'vel_y', 'size', 'energy'] as const;
+export const STATE_VAR_ORDER: (keyof typeof STATE_VARS)[] = ['pos_x', 'pos_y', 'vel_x', 'vel_y', 'size'];
 
 // 2.5. Initialization configuration (initial distributions + hyperparameters)
 // Keep this as the single source of truth for simulator initial conditions.
@@ -54,69 +51,99 @@ export const INITIALIZATION: InitializationIR = {
   state: {
     pos_x: { kind: 'uniform', low: -WORLD_SIZE_X / 2, high: WORLD_SIZE_X / 2 },
     pos_y: { kind: 'uniform', low: -WORLD_SIZE_Y / 2, high: WORLD_SIZE_Y / 2 },
-    vel_x: { kind: 'const', value: 0.0 },
-    vel_y: { kind: 'const', value: 0.0 },
-    size: { kind: 'const', value: 1.0 },
-    energy: { kind: 'const', value: 0.0 },
+    vel_x: { kind: 'normal', mean: 0.0, std: 10.0 },
+    vel_y: { kind: 'normal', mean: 0.0, std: 10.0 },
+    size: { kind: 'uniform', low: 1.0, high: 3.0 },
   },
   // This is used to sample the gene tensor (n_agents x gene_len).
   genes: { kind: 'normal', mean: 0.0, std: 1.0 },
 };
 
 // 2.6. Boundary conditions
-// For a torus world, positions are wrapped into [min, max].
-export const BOUNDARY_CONDITIONS: BoundaryCondition[] = [
-  { target_state: 'pos_x', kind: 'torus', range: [-WORLD_SIZE_X / 2, WORLD_SIZE_X / 2] },
-  { target_state: 'pos_y', kind: 'torus', range: [-WORLD_SIZE_Y / 2, WORLD_SIZE_Y / 2] },
-];
+// Boundary conditions are intentionally disabled for now to keep the
+// implementation purely tensor-based (no CPU-side rem_euclid).
+export const BOUNDARY_CONDITIONS: BoundaryCondition[] = [];
 
-// 3. Neighbor interactions (computed outside the per-agent expression tree)
-// Stage-A implementation is O(N^2) all-pairs; suitable for validating the model.
-export const INTERACTIONS: AllPairsExclusion2D[] = [
-  {
-    kind: 'all_pairs_exclusion_2d',
-    pos: { x: 'pos_x', y: 'pos_y' },
-    radius: 'size',
-    cutoff: 50,
-    strength: 5.0,
-    eps: 1e-4,
-    outputs: { fx: 'f_excl_x', fy: 'f_excl_y' },
-  },
-];
-
-// 3. Physics update rules
-export const PHYSICS_RULES: PhysicsRule[] = [
-  // Velocity update (X-axis): vel_x = vel_x - (vel_x * drag * dt)
-  {
-    target_state: 'vel_x',
-    // Add neighbor exclusion force (computed by INTERACTIONS) before drag.
-    expr: ops.sub(
-      ops.add(STATE_VARS.vel_x, ops.mul(ops.aux('f_excl_x'), CONSTANTS.dt)),
-      ops.mul(ops.mul(STATE_VARS.vel_x, GENETIC_PARAMS.drag), CONSTANTS.dt)
-    ),
-  },
-  // Velocity update (Y-axis): vel_y = vel_y - (vel_y * drag * dt)
-  {
-    target_state: 'vel_y',
-    expr: ops.sub(
-      ops.add(STATE_VARS.vel_y, ops.mul(ops.aux('f_excl_y'), CONSTANTS.dt)),
-      ops.mul(ops.mul(STATE_VARS.vel_y, GENETIC_PARAMS.drag), CONSTANTS.dt)
-    ),
-  },
-  // Position update (X-axis): pos_x = pos_x + vel_x * dt
+// 3. Internal dynamics update rules (time evolution)
+export const DYNAMICS_RULES: DynamicsRule[] = [
   {
     target_state: 'pos_x',
+    // Position update: x += v_x * dt
     expr: ops.add(STATE_VARS.pos_x, ops.mul(STATE_VARS.vel_x, CONSTANTS.dt)),
   },
-  // Position update (Y-axis): pos_y = pos_y + vel_y * dt
   {
     target_state: 'pos_y',
+    // Position update: y += v_y * dt
     expr: ops.add(STATE_VARS.pos_y, ops.mul(STATE_VARS.vel_y, CONSTANTS.dt)),
   },
-  // Energy consumption: energy = energy - metabolism * dt
   {
-    target_state: 'energy',
-    expr: ops.sub(STATE_VARS.energy, ops.mul(GENETIC_PARAMS.metabolism, CONSTANTS.dt)),
+    target_state: 'vel_x',
+    // Velocity update: v_x += a_x * dt (gravity only)
+    expr: (() => {
+      const x = STATE_VARS.pos_x;
+      const y = STATE_VARS.pos_y;
+      const m = STATE_VARS.size;
+      const vx = STATE_VARS.vel_x;
+
+      const xT = ops.transpose(x, 0, 1);
+      const yT = ops.transpose(y, 0, 1);
+      const mT = ops.transpose(m, 0, 1);
+
+      const dx = ops.sub(xT, x);
+      const dy = ops.sub(yT, y);
+
+      // r^2 + eps to avoid singularities on the diagonal.
+      const d2 = ops.add(ops.add(ops.mul(dx, dx), ops.mul(dy, dy)), CONSTANTS.eps);
+      const inv_r = ops.div(CONSTANTS.one, ops.sqrt(d2));
+      const inv_r3 = ops.div(inv_r, d2);
+
+      // a_x = G * sum_j( m_j * dx / r^3 )  (dx points i->j)
+      const ax_grav = ops.sum(ops.mul(ops.mul(mT, dx), inv_r3), 1, true);
+
+      // Gravity strength is fully constant for now.
+      // Keep 1 param per group alive (for phenotype tensor shapes) without affecting dynamics.
+      const _keep_params = ops.add(
+        ops.mul(GENETIC_PARAMS.grav_g, CONSTANTS.zero),
+        ops.mul(GENETIC_PARAMS.dummy_attr, CONSTANTS.zero)
+      );
+      const g = ops.add(ops.const(100.0), _keep_params);
+
+      const dv = ops.mul(ops.mul(g, ax_grav), CONSTANTS.dt);
+      return ops.add(vx, dv);
+    })(),
+  },
+  {
+    target_state: 'vel_y',
+    expr: (() => {
+      const x = STATE_VARS.pos_x;
+      const y = STATE_VARS.pos_y;
+      const m = STATE_VARS.size;
+      const vy = STATE_VARS.vel_y;
+
+      const xT = ops.transpose(x, 0, 1);
+      const yT = ops.transpose(y, 0, 1);
+      const mT = ops.transpose(m, 0, 1);
+
+      const dx = ops.sub(xT, x);
+      const dy = ops.sub(yT, y);
+
+      // r^2 + eps to avoid singularities on the diagonal.
+      const d2 = ops.add(ops.add(ops.mul(dx, dx), ops.mul(dy, dy)), CONSTANTS.eps);
+      const inv_r = ops.div(CONSTANTS.one, ops.sqrt(d2));
+      const inv_r3 = ops.div(inv_r, d2);
+      const ay_grav = ops.sum(ops.mul(ops.mul(mT, dy), inv_r3), 1, true);
+
+      // Gravity strength is fully constant for now.
+      // Keep 1 param per group alive (for phenotype tensor shapes) without affecting dynamics.
+      const _keep_params = ops.add(
+        ops.mul(GENETIC_PARAMS.grav_g, CONSTANTS.zero),
+        ops.mul(GENETIC_PARAMS.dummy_attr, CONSTANTS.zero)
+      );
+      const g = ops.add(ops.const(100.0), _keep_params);
+
+      const dv = ops.mul(ops.mul(g, ay_grav), CONSTANTS.dt);
+      return ops.add(vy, dv);
+    })(),
   },
 ];
 
@@ -127,36 +154,15 @@ export const VISUAL_MAPPING: VisualMapping = {
     y: 'pos_y',
   },
   size: {
-    // Multi-source example: size affected by both 'size' state and 'energy'
-    source: {
-      sources: ['size', 'energy'],
-      blend: 'average',
-    },
-    // Normalize blended size source using this input range.
-    valueRange: [0, 100],
+    source: 'size',
+    valueRange: [1, 10],
     range: [2, 20],
     scale: 'sqrt',
-  },
-  color: {
-    // Multi-source example: color based on energy and velocity magnitude
-    source: {
-      sources: ['energy', 'vel_x', 'vel_y'],
-      blend: 'average',
-    },
-    colormap: 'viridis',
-    range: [0, 100],
-  },
-  opacity: {
-    // Single source example
-    source: 'energy',
-    // Normalize energy using this input range, then map into [0.3, 1.0].
-    valueRange: [0, 100],
-    range: [0.3, 1.0],
   },
 };
 
 // Extract state variable names from rules
-export function extractStateVars(rules: PhysicsRule[]): string[] {
+export function extractStateVars(rules: DynamicsRule[]): string[] {
   const vars = new Set<string>();
   for (const rule of rules) {
     vars.add(rule.target_state);

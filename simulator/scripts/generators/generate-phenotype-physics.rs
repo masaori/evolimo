@@ -1,4 +1,4 @@
-// Code generator: Generate phenotype.rs and physics.rs from JSON IR
+// Code generator: Generate phenotype.rs and dynamics.rs from JSON IR
 
 use std::collections::HashMap;
 use std::fs;
@@ -10,8 +10,6 @@ use serde::Deserialize;
 struct ConfigIR {
     state_vars: Vec<String>,
     groups: HashMap<String, GroupConfig>,
-    #[serde(default)]
-    interactions: Vec<Interaction>,
     #[serde(default)]
     boundary_conditions: Vec<BoundaryCondition>,
     #[serde(default)]
@@ -50,34 +48,6 @@ enum Distribution {
 }
 
 #[derive(Deserialize, Debug)]
-#[serde(tag = "kind")]
-enum Interaction {
-    #[serde(rename = "all_pairs_exclusion_2d")]
-    AllPairsExclusion2D {
-        pos: Pos2,
-        radius: String,
-        #[serde(default)]
-        cutoff: Option<f32>,
-        strength: f32,
-        #[serde(default)]
-        eps: Option<f32>,
-        outputs: Outputs2,
-    },
-}
-
-#[derive(Deserialize, Debug)]
-struct Pos2 {
-    x: String,
-    y: String,
-}
-
-#[derive(Deserialize, Debug)]
-struct Outputs2 {
-    fx: String,
-    fy: String,
-}
-
-#[derive(Deserialize, Debug)]
 struct GroupConfig {
     activation: String,
     params: Vec<String>,
@@ -109,6 +79,14 @@ struct Operation {
     args: Vec<String>,
     #[serde(default)]
     value: Option<f64>,
+    #[serde(default)]
+    dim: Option<i64>,
+    #[serde(default)]
+    keepdim: Option<bool>,
+    #[serde(default)]
+    dim0: Option<i64>,
+    #[serde(default)]
+    dim1: Option<i64>,
 }
 
 fn main() {
@@ -118,21 +96,21 @@ fn main() {
         .join("..")
         .join("..");
 
-    let json_path = repo_root.join("domain-model/_gen/physics_ir.json");
+    let json_path = repo_root.join("domain-model/_gen/dynamics_ir.json");
 
     if !json_path.exists() {
-        eprintln!("⚠️  physics_ir.json not found. Run 'npm run build' in domain-model/ first.");
+        eprintln!("⚠️  dynamics_ir.json not found. Run 'npm run build' in domain-model/ first.");
         eprintln!("   Skipping code generation.");
         return;
     }
 
-    let json_str = fs::read_to_string(json_path).expect("Failed to read physics_ir.json");
+    let json_str = fs::read_to_string(&json_path).expect("Failed to read dynamics_ir.json");
     let ir: ConfigIR = serde_json::from_str(&json_str).expect("Invalid JSON format");
 
     let out_dir = repo_root.join("simulator/src/_gen");
 
     generate_phenotype(&ir, &out_dir);
-    generate_physics(&ir, &out_dir);
+    generate_dynamics(&ir, &out_dir);
 
     println!("✅ Generated Rust code in src/_gen/");
 }
@@ -274,7 +252,7 @@ fn generate_phenotype(ir: &ConfigIR, out_dir: &Path) {
     fs::write(out_dir.join("phenotype.rs"), code).expect("Failed to write phenotype.rs");
 }
 
-fn generate_physics(ir: &ConfigIR, out_dir: &Path) {
+fn generate_dynamics(ir: &ConfigIR, out_dir: &Path) {
     let mut code = String::new();
     let group_names = ordered_group_names(ir);
 
@@ -350,20 +328,38 @@ fn generate_physics(ir: &ConfigIR, out_dir: &Path) {
     } else {
         // Fallback for older IR without initialization.
         code.push_str("    // Fallback defaults (domain-model initialization not provided)\n");
-        code.push_str("    let pos_x = candle_core::Tensor::rand(-200.0f32, 200.0f32, (n_agents, 1), device)?;\n");
-        code.push_str("    let pos_y = candle_core::Tensor::rand(-200.0f32, 200.0f32, (n_agents, 1), device)?;\n");
-        code.push_str("    let vel_x = candle_core::Tensor::zeros((n_agents, 1), candle_core::DType::F32, device)?;\n");
-        code.push_str("    let vel_y = candle_core::Tensor::zeros((n_agents, 1), candle_core::DType::F32, device)?;\n");
-        code.push_str("    let size = candle_core::Tensor::ones((n_agents, 1), candle_core::DType::F32, device)?;\n");
-        code.push_str("    let energy = candle_core::Tensor::zeros((n_agents, 1), candle_core::DType::F32, device)?;\n\n");
-        code.push_str("    candle_core::Tensor::cat(&[&pos_x, &pos_y, &vel_x, &vel_y, &size, &energy], 1)\n");
+        for name in &ir.state_vars {
+            let var = format!("init_{}", name);
+            if name == "size" {
+                code.push_str(&format!(
+                    "    let {} = candle_core::Tensor::ones((n_agents, 1), candle_core::DType::F32, device)?;\n",
+                    var
+                ));
+            } else if name.starts_with("pos_") {
+                code.push_str(&format!(
+                    "    let {} = candle_core::Tensor::rand(-200.0f32, 200.0f32, (n_agents, 1), device)?;\n",
+                    var
+                ));
+            } else {
+                code.push_str(&format!(
+                    "    let {} = candle_core::Tensor::zeros((n_agents, 1), candle_core::DType::F32, device)?;\n",
+                    var
+                ));
+            }
+        }
+
+        code.push_str("\n    candle_core::Tensor::cat(&[\n");
+        for name in &ir.state_vars {
+            code.push_str(&format!("        &init_{},\n", name));
+        }
+        code.push_str("    ], 1)\n");
     }
 
     code.push_str("}\n\n");
 
     // Function signature
     code.push_str("#[allow(dead_code)]\n");
-    code.push_str("pub fn update_physics(\n");
+    code.push_str("pub fn update_dynamics(\n");
     code.push_str("    state: &candle_core::Tensor,\n");
     for name in &group_names {
         code.push_str(&format!("    p_{}: &candle_core::Tensor,\n", name));
@@ -379,151 +375,7 @@ fn generate_physics(ir: &ConfigIR, out_dir: &Path) {
     }
     code.push('\n');
 
-    // Interactions
-    if !ir.interactions.is_empty() {
-        code.push_str("    // Interactions (stage-A may be O(N^2))\n");
-        for interaction in &ir.interactions {
-            match interaction {
-                Interaction::AllPairsExclusion2D {
-                    pos,
-                    radius,
-                    cutoff,
-                    strength,
-                    eps,
-                    outputs,
-                } => {
-                    // Determine periodic boundary (torus) settings for this interaction's axes.
-                    let torus_x = ir
-                        .boundary_conditions
-                        .iter()
-                        .find(|bc| bc.kind == "torus" && bc.target_state == pos.x);
-                    let torus_y = ir
-                        .boundary_conditions
-                        .iter()
-                        .find(|bc| bc.kind == "torus" && bc.target_state == pos.y);
-
-                    let idx_x = ir
-                        .state_vars
-                        .iter()
-                        .position(|s| s == &pos.x)
-                        .expect("pos.x not found in state_vars");
-                    let idx_y = ir
-                        .state_vars
-                        .iter()
-                        .position(|s| s == &pos.y)
-                        .expect("pos.y not found in state_vars");
-                    let idx_r = ir
-                        .state_vars
-                        .iter()
-                        .position(|s| s == radius)
-                        .expect("radius not found in state_vars");
-
-                    let eps_val = eps.unwrap_or(1e-4);
-                    let cutoff2 = cutoff.map(|c| c * c);
-
-                    // Emit torus constants if configured.
-                    if let Some(bc) = torus_x {
-                        let (min, max) = bc.range;
-                        let width = max - min;
-                        let half = width * 0.5;
-                        code.push_str(&format!(
-                            "    // Torus X: {} in [{:.6},{:.6}] (width={:.6})\n",
-                            pos.x, min, max, width
-                        ));
-                        code.push_str(&format!(
-                            "    let torus_x_width = {:.6}f32;\n    let torus_x_half = {:.6}f32;\n",
-                            width, half
-                        ));
-                    }
-                    if let Some(bc) = torus_y {
-                        let (min, max) = bc.range;
-                        let width = max - min;
-                        let half = width * 0.5;
-                        code.push_str(&format!(
-                            "    // Torus Y: {} in [{:.6},{:.6}] (width={:.6})\n",
-                            pos.y, min, max, width
-                        ));
-                        code.push_str(&format!(
-                            "    let torus_y_width = {:.6}f32;\n    let torus_y_half = {:.6}f32;\n",
-                            width, half
-                        ));
-                    }
-
-                    code.push_str(&format!(
-                        "    // all_pairs_exclusion_2d: outputs {} / {}\n",
-                        outputs.fx, outputs.fy
-                    ));
-                    code.push_str("    let state_host: Vec<Vec<f32>> = state.to_vec2()?;\n");
-                    code.push_str("    let n_agents = state_host.len();\n");
-                    code.push_str("    let mut fx = vec![0f32; n_agents];\n");
-                    code.push_str("    let mut fy = vec![0f32; n_agents];\n");
-                    code.push_str("    for i in 0..n_agents {\n");
-                    code.push_str("        let xi = state_host[i][");
-                    code.push_str(&format!("{}", idx_x));
-                    code.push_str("];\n");
-                    code.push_str("        let yi = state_host[i][");
-                    code.push_str(&format!("{}", idx_y));
-                    code.push_str("];\n");
-                    code.push_str("        let ri = state_host[i][");
-                    code.push_str(&format!("{}", idx_r));
-                    code.push_str("];\n");
-                    code.push_str("        for j in (i + 1)..n_agents {\n");
-                    code.push_str("            let xj = state_host[j][");
-                    code.push_str(&format!("{}", idx_x));
-                    code.push_str("];\n");
-                    code.push_str("            let yj = state_host[j][");
-                    code.push_str(&format!("{}", idx_y));
-                    code.push_str("];\n");
-                    code.push_str("            let rj = state_host[j][");
-                    code.push_str(&format!("{}", idx_r));
-                    code.push_str("];\n");
-                    code.push_str("            let mut dx = xi - xj;\n");
-                    if torus_x.is_some() {
-                        // Minimal-image convention for torus.
-                        code.push_str(
-                            "            dx = (dx + torus_x_half).rem_euclid(torus_x_width) - torus_x_half;\n",
-                        );
-                    }
-                    code.push_str("            let mut dy = yi - yj;\n");
-                    if torus_y.is_some() {
-                        code.push_str(
-                            "            dy = (dy + torus_y_half).rem_euclid(torus_y_width) - torus_y_half;\n",
-                        );
-                    }
-                    code.push_str(&format!("            let d2 = dx * dx + dy * dy + {}f32;\n", eps_val));
-                    if let Some(c2) = cutoff2 {
-                        code.push_str(&format!(
-                            "            if d2 > {}f32 {{ continue; }}\n",
-                            c2
-                        ));
-                    }
-                    code.push_str("            let r = ri + rj;\n");
-                    code.push_str("            let delta = r * r - d2;\n");
-                    code.push_str("            if delta <= 0f32 { continue; }\n");
-                    code.push_str(&format!(
-                        "            let inv = 1.0f32 / d2;\n            let m = {}f32 * delta * inv;\n",
-                        strength
-                    ));
-                    code.push_str("            let fx_ij = m * dx;\n");
-                    code.push_str("            let fy_ij = m * dy;\n");
-                    code.push_str("            fx[i] += fx_ij;\n");
-                    code.push_str("            fy[i] += fy_ij;\n");
-                    code.push_str("            fx[j] -= fx_ij;\n");
-                    code.push_str("            fy[j] -= fy_ij;\n");
-                    code.push_str("        }\n");
-                    code.push_str("    }\n");
-                    code.push_str(&format!(
-                        "    let {} = candle_core::Tensor::from_vec(fx, (n_agents, 1), state.device())?;\n",
-                        outputs.fx
-                    ));
-                    code.push_str(&format!(
-                        "    let {} = candle_core::Tensor::from_vec(fy, (n_agents, 1), state.device())?;\n\n",
-                        outputs.fy
-                    ));
-                }
-            }
-        }
-    }
+    // Note: population-mixing effects should be expressed as tensor operations in the IR.
 
     // Decompose parameters
     code.push_str("    // Parameter decomposition\n");
@@ -539,7 +391,7 @@ fn generate_physics(ir: &ConfigIR, out_dir: &Path) {
     code.push('\n');
 
     // Operations
-    code.push_str("    // Physics operations\n");
+    code.push_str("    // Internal dynamics operations\n");
     for op in &ir.operations {
         let expr = match op.op.as_str() {
             "const" => {
@@ -565,6 +417,23 @@ fn generate_physics(ir: &ConfigIR, out_dir: &Path) {
             "div" if op.args.len() == 2 => {
                 format!("{}.broadcast_div(&{})?", op.args[0], op.args[1])
             }
+            "sqrt" if op.args.len() == 1 => {
+                format!("{}.sqrt()?", op.args[0])
+            }
+            "transpose" if op.args.len() == 1 => {
+                let d0 = op.dim0.unwrap_or(0);
+                let d1 = op.dim1.unwrap_or(1);
+                format!("{}.transpose({}, {})?", op.args[0], d0, d1)
+            }
+            "sum" if op.args.len() == 1 => {
+                let dim = op.dim.unwrap_or(0);
+                let keepdim = op.keepdim.unwrap_or(true);
+                if keepdim {
+                    format!("{}.sum_keepdim({})?", op.args[0], dim)
+                } else {
+                    format!("{}.sum({})?", op.args[0], dim)
+                }
+            }
             "relu" if op.args.len() == 1 => {
                 format!("{}.relu()?", op.args[0])
             }
@@ -584,7 +453,7 @@ fn generate_physics(ir: &ConfigIR, out_dir: &Path) {
         code.push_str(&format!("    let {} = {};\n", op.target, expr));
     }
 
-    // Boundary conditions (applied after physics operations, before returning state)
+    // Boundary conditions (applied after dynamics operations, before returning state)
     if !ir.boundary_conditions.is_empty() {
         code.push_str("\n    // Boundary conditions\n");
         code.push_str("    let n_agents = state.dims()[0];\n");
@@ -602,9 +471,9 @@ fn generate_physics(ir: &ConfigIR, out_dir: &Path) {
                 "    let mut _bc_col = {}.to_vec2::<f32>()?;\n",
                 bc.target_state
             ));
-            code.push_str(&format!(
-                "    let mut _bc_flat: Vec<f32> = _bc_col.into_iter().map(|r| r[0]).collect();\n"
-            ));
+            code.push_str(
+                "    let mut _bc_flat: Vec<f32> = _bc_col.into_iter().map(|r| r[0]).collect();\n",
+            );
             code.push_str(&format!(
                 "    for v in _bc_flat.iter_mut() {{ *v = (*v - ({:.6}f32)).rem_euclid({:.6}f32) + ({:.6}f32); }}\n",
                 min, width, min
@@ -624,249 +493,24 @@ fn generate_physics(ir: &ConfigIR, out_dir: &Path) {
     code.push_str("    ], 1)\n");
     code.push_str("}\n");
 
-    // CPU backend (cell-list neighbor search)
-    code.push_str("\n#[allow(dead_code)]\n");
-    code.push_str("pub fn update_physics_cpu(\n");
-    code.push_str("    state: &[f32],\n");
+    // Primary output
+    fs::write(out_dir.join("dynamics.rs"), &code).expect("Failed to write dynamics.rs");
+
+    // Temporary compatibility shim: physics.rs re-exports dynamics.
+    let mut shim = String::new();
+    shim.push_str("// AUTO-GENERATED compatibility shim - DO NOT EDIT\n\n");
+    shim.push_str("include!(\"dynamics.rs\");\n");
+    shim.push_str("\n#[allow(dead_code)]\n");
+    shim.push_str("pub fn update_physics(\n");
+    shim.push_str("    state: &candle_core::Tensor,\n");
     for name in &group_names {
-        code.push_str(&format!("    p_{}: &[f32],\n", name));
+        shim.push_str(&format!("    p_{}: &candle_core::Tensor,\n", name));
     }
-    code.push_str(") -> candle_core::Result<Vec<f32>> {\n");
-    code.push_str("    let n_agents = state.len() / STATE_DIMS;\n");
-    code.push_str("    let mut out = vec![0f32; n_agents * STATE_DIMS];\n\n");
-
-    // Per-group stride (params per agent)
+    shim.push_str(") -> candle_core::Result<candle_core::Tensor> {\n");
+    shim.push_str("    update_dynamics(state");
     for name in &group_names {
-        code.push_str(&format!(
-            "    let stride_{} = if n_agents == 0 {{ 0 }} else {{ p_{}.len() / n_agents }};\n",
-            name, name
-        ));
+        shim.push_str(&format!(", p_{}", name));
     }
-    code.push_str("\n");
-
-    // Interactions (CPU cell-list)
-    if !ir.interactions.is_empty() {
-        code.push_str("    // Interactions (CPU cell-list)\n");
-        for interaction in &ir.interactions {
-            match interaction {
-                Interaction::AllPairsExclusion2D {
-                    pos,
-                    radius,
-                    cutoff,
-                    strength,
-                    eps,
-                    outputs,
-                } => {
-                    let idx_x = ir
-                        .state_vars
-                        .iter()
-                        .position(|s| s == &pos.x)
-                        .expect("pos.x not found in state_vars");
-                    let idx_y = ir
-                        .state_vars
-                        .iter()
-                        .position(|s| s == &pos.y)
-                        .expect("pos.y not found in state_vars");
-                    let idx_r = ir
-                        .state_vars
-                        .iter()
-                        .position(|s| s == radius)
-                        .expect("radius not found in state_vars");
-
-                    let eps_val = eps.unwrap_or(1e-4);
-
-                    // Boundary (torus) ranges for minimal-image distance.
-                    let torus_x = ir
-                        .boundary_conditions
-                        .iter()
-                        .find(|bc| bc.kind == "torus" && bc.target_state == pos.x);
-                    let torus_y = ir
-                        .boundary_conditions
-                        .iter()
-                        .find(|bc| bc.kind == "torus" && bc.target_state == pos.y);
-
-                    let (min_x, max_x, use_torus_x) = if let Some(bc) = torus_x {
-                        (bc.range.0 as f32, bc.range.1 as f32, true)
-                    } else {
-                        (-200f32, 200f32, false)
-                    };
-                    let (min_y, max_y, use_torus_y) = if let Some(bc) = torus_y {
-                        (bc.range.0 as f32, bc.range.1 as f32, true)
-                    } else {
-                        (-200f32, 200f32, false)
-                    };
-
-                    code.push_str(&format!(
-                        "    let min_x = {:.6}f32;\n    let max_x = {:.6}f32;\n    let min_y = {:.6}f32;\n    let max_y = {:.6}f32;\n    let use_torus_x = {};\n    let use_torus_y = {};\n    let world_w = max_x - min_x;\n    let world_h = max_y - min_y;\n    let half_w = world_w * 0.5;\n    let half_h = world_h * 0.5;\n",
-                        min_x,
-                        max_x,
-                        min_y,
-                        max_y,
-                        if use_torus_x { "true" } else { "false" },
-                        if use_torus_y { "true" } else { "false" }
-                    ));
-
-                    code.push_str(&format!(
-                        "    // all_pairs_exclusion_2d (CPU): outputs {} / {}\n",
-                        outputs.fx, outputs.fy
-                    ));
-
-                    // Allocate outputs.
-                    code.push_str(&format!(
-                        "    let mut aux_{} = vec![0f32; n_agents];\n",
-                        outputs.fx
-                    ));
-                    code.push_str(&format!(
-                        "    let mut aux_{} = vec![0f32; n_agents];\n",
-                        outputs.fy
-                    ));
-
-                    // Build position/radius arrays and find max radius.
-                    code.push_str("    let mut _x = vec![0f32; n_agents];\n");
-                    code.push_str("    let mut _y = vec![0f32; n_agents];\n");
-                    code.push_str("    let mut _r = vec![0f32; n_agents];\n");
-                    code.push_str("    let mut _max_r = 0f32;\n");
-                    code.push_str("    for i in 0..n_agents {\n");
-                    code.push_str(&format!(
-                        "        let base = i * STATE_DIMS;\n        let xi = state[base + {}];\n        let yi = state[base + {}];\n        let ri = state[base + {}];\n",
-                        idx_x, idx_y, idx_r
-                    ));
-                    code.push_str(
-                        "        _x[i] = xi;\n        _y[i] = yi;\n        _r[i] = ri;\n        if ri > _max_r { _max_r = ri; }\n    }\n",
-                    );
-
-                    // Effective neighbor range: min(cutoff, 2*max_r) when cutoff is provided.
-                    let eff_range = if let Some(cut) = cutoff {
-                        format!(
-                            "    let mut _range = {:.6}f32;\n    let _pair_max = 2.0f32 * _max_r;\n    if _pair_max < _range {{ _range = _pair_max; }}\n",
-                            *cut
-                        )
-                    } else {
-                        "    let _range = 2.0f32 * _max_r;\n".to_string()
-                    };
-                    code.push_str(&eff_range);
-                    code.push_str(
-                        "    let cell_size = _range.max(1e-3f32);\n    let grid_w = ((world_w / cell_size).ceil() as isize).max(1);\n    let grid_h = ((world_h / cell_size).ceil() as isize).max(1);\n    let n_cells = (grid_w * grid_h) as usize;\n    let mut head = vec![usize::MAX; n_cells];\n    let mut next = vec![usize::MAX; n_agents];\n",
-                    );
-
-                    // Insert agents into cells.
-                    code.push_str(
-                        "    for i in 0..n_agents {\n        let mut cx = ((_x[i] - min_x) / cell_size).floor() as isize;\n        let mut cy = ((_y[i] - min_y) / cell_size).floor() as isize;\n        if use_torus_x { cx = cx.rem_euclid(grid_w); } else { cx = cx.clamp(0, grid_w - 1); }\n        if use_torus_y { cy = cy.rem_euclid(grid_h); } else { cy = cy.clamp(0, grid_h - 1); }\n        let cell = (cx + cy * grid_w) as usize;\n        next[i] = head[cell];\n        head[cell] = i;\n    }\n",
-                    );
-
-                    // Pairwise accumulation within neighboring cells.
-                    code.push_str(
-                        "    let cutoff2 = cell_size * cell_size;\n    for cy in 0..grid_h {\n        for cx in 0..grid_w {\n            let cell = (cx + cy * grid_w) as usize;\n            let mut i_opt = head[cell];\n            while i_opt != usize::MAX {\n                let i = i_opt;\n                // Same cell pairs (j>i)\n                let mut j_opt = next[i];\n                while j_opt != usize::MAX {\n                    let j = j_opt;\n                    j_opt = next[j];\n                    let mut dx = _x[i] - _x[j];\n                    if use_torus_x { dx = (dx + half_w).rem_euclid(world_w) - half_w; }\n                    let mut dy = _y[i] - _y[j];\n                    if use_torus_y { dy = (dy + half_h).rem_euclid(world_h) - half_h; }\n                    let d2 = dx * dx + dy * dy + "
-                    );
-                    code.push_str(&format!("{:.6}f32;\n", eps_val));
-                    code.push_str(
-                        "                    if d2 > cutoff2 { continue; }\n                    let rsum = _r[i] + _r[j];\n                    let delta = rsum * rsum - d2;\n                    if delta <= 0f32 { continue; }\n                    let inv = 1.0f32 / d2;\n                    let m = "
-                    );
-                    code.push_str(&format!("{:.6}f32", strength));
-                    code.push_str(
-                        " * delta * inv;\n                    let fx_ij = m * dx;\n                    let fy_ij = m * dy;\n                    aux_"
-                    );
-                    code.push_str(&outputs.fx);
-                    code.push_str("[i] += fx_ij;\n                    aux_");
-                    code.push_str(&outputs.fy);
-                    code.push_str("[i] += fy_ij;\n                    aux_");
-                    code.push_str(&outputs.fx);
-                    code.push_str("[j] -= fx_ij;\n                    aux_");
-                    code.push_str(&outputs.fy);
-                    code.push_str("[j] -= fy_ij;\n                }\n\n                // Neighbor cells (avoid double counting by only visiting (dx,dy) where neighbor cell id > cell id)\n                for oy in -1..=1 {\n                    for ox in -1..=1 {\n                        if ox == 0 && oy == 0 { continue; }\n                        let mut ncx = cx + ox;\n                        let mut ncy = cy + oy;\n                        if use_torus_x { ncx = ncx.rem_euclid(grid_w); }\n                        if use_torus_y { ncy = ncy.rem_euclid(grid_h); }\n                        if !use_torus_x && (ncx < 0 || ncx >= grid_w) { continue; }\n                        if !use_torus_y && (ncy < 0 || ncy >= grid_h) { continue; }\n                        let ncell = (ncx + ncy * grid_w) as usize;\n                        if ncell <= cell { continue; }\n                        let mut j2_opt = head[ncell];\n                        while j2_opt != usize::MAX {\n                            let j = j2_opt;\n                            j2_opt = next[j];\n                            let mut dx = _x[i] - _x[j];\n                            if use_torus_x { dx = (dx + half_w).rem_euclid(world_w) - half_w; }\n                            let mut dy = _y[i] - _y[j];\n                            if use_torus_y { dy = (dy + half_h).rem_euclid(world_h) - half_h; }\n                            let d2 = dx * dx + dy * dy + "
-                    );
-                    code.push_str(&format!("{:.6}f32;\n", eps_val));
-                    code.push_str(
-                        "                            if d2 > cutoff2 { continue; }\n                            let rsum = _r[i] + _r[j];\n                            let delta = rsum * rsum - d2;\n                            if delta <= 0f32 { continue; }\n                            let inv = 1.0f32 / d2;\n                            let m = "
-                    );
-                    code.push_str(&format!("{:.6}f32", strength));
-                    code.push_str(
-                        " * delta * inv;\n                            let fx_ij = m * dx;\n                            let fy_ij = m * dy;\n                            aux_"
-                    );
-                    code.push_str(&outputs.fx);
-                    code.push_str("[i] += fx_ij;\n                            aux_");
-                    code.push_str(&outputs.fy);
-                    code.push_str("[i] += fy_ij;\n                            aux_");
-                    code.push_str(&outputs.fx);
-                    code.push_str("[j] -= fx_ij;\n                            aux_");
-                    code.push_str(&outputs.fy);
-                    code.push_str("[j] -= fy_ij;\n                        }\n                    }\n                }\n\n                i_opt = next[i];\n            }\n        }\n    }\n\n");
-                }
-            }
-        }
-    }
-
-    // Per-agent update (scalar ops)
-    code.push_str("    for i in 0..n_agents {\n        let base = i * STATE_DIMS;\n");
-    for (idx, name) in ir.state_vars.iter().enumerate() {
-        code.push_str(&format!("        let s_{} = state[base + {}];\n", name, idx));
-    }
-
-    // Aux scalars
-    for interaction in &ir.interactions {
-        if let Interaction::AllPairsExclusion2D { outputs, .. } = interaction {
-            code.push_str(&format!("        let {} = aux_{}[i];\n", outputs.fx, outputs.fx));
-            code.push_str(&format!("        let {} = aux_{}[i];\n", outputs.fy, outputs.fy));
-        }
-    }
-
-    // Param scalars
-    for g_name in &group_names {
-        let g_data = ir.groups.get(g_name).expect("group missing");
-        for (pi, p_name) in g_data.params.iter().enumerate() {
-            code.push_str(&format!(
-                "        let p_{} = p_{}[i * stride_{} + {}];\n",
-                p_name, g_name, g_name, pi
-            ));
-        }
-    }
-    code.push_str("\n");
-
-    for op in &ir.operations {
-        let expr = match op.op.as_str() {
-            "const" => {
-                if let Some(val) = op.value {
-                    format!("{}f32", val)
-                } else {
-                    "0f32".to_string()
-                }
-            }
-            "ref_param" => {
-                // params are loaded above
-                continue;
-            }
-            "add" if op.args.len() == 2 => format!("{} + {}", op.args[0], op.args[1]),
-            "sub" if op.args.len() == 2 => format!("{} - {}", op.args[0], op.args[1]),
-            "mul" if op.args.len() == 2 => format!("{} * {}", op.args[0], op.args[1]),
-            "div" if op.args.len() == 2 => format!("{} / {}", op.args[0], op.args[1]),
-            "relu" if op.args.len() == 1 => format!("({}).max(0f32)", op.args[0]),
-            "neg" if op.args.len() == 1 => format!("-{}", op.args[0]),
-            "add" if op.args.len() == 1 => op.args[0].to_string(),
-            _ => {
-                eprintln!("⚠️  Unknown operation (cpu): {:?}", op);
-                "0f32".to_string()
-            }
-        };
-        code.push_str(&format!("        let {} = {};\n", op.target, expr));
-    }
-
-    // Apply boundary conditions (scalar)
-    for bc in &ir.boundary_conditions {
-        if bc.kind != "torus" {
-            continue;
-        }
-        let (min, max) = bc.range;
-        let width = max - min;
-        code.push_str(&format!(
-            "        let {} = ({} - ({:.6}f32)).rem_euclid({:.6}f32) + ({:.6}f32);\n",
-            bc.target_state, bc.target_state, min, width, min
-        ));
-    }
-
-    for (idx, name) in ir.state_vars.iter().enumerate() {
-        code.push_str(&format!("        out[base + {}] = {};\n", idx, name));
-    }
-    code.push_str("    }\n\n    Ok(out)\n}\n");
-
-    fs::write(out_dir.join("physics.rs"), code).expect("Failed to write physics.rs");
+    shim.push_str(")\n}\n");
+    fs::write(out_dir.join("physics.rs"), shim).expect("Failed to write physics.rs");
 }

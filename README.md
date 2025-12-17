@@ -18,7 +18,7 @@ evolimo/
 ```bash
 cd domain-model
 npm install
-npm run build        # physics_ir.json生成
+npm run build        # dynamics_ir.json生成
 npm run fmt          # フォーマット
 npm run check-types  # 型チェック
 ```

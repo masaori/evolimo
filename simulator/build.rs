@@ -3,7 +3,7 @@
 use std::process::Command;
 
 fn main() {
-    println!("cargo:rerun-if-changed=../domain-model/_gen/physics_ir.json");
+    println!("cargo:rerun-if-changed=../domain-model/_gen/dynamics_ir.json");
     println!("cargo:rerun-if-changed=scripts/generators/generate-phenotype-physics.rs");
 
     // Run the phenotype/physics code generator
