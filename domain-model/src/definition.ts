@@ -41,7 +41,6 @@ const GENETIC_PARAMS = {
 } as const;
 
 const CONSTANTS = {
-  dt: ops.const(0.1),
   one: ops.const(1.0),
   eps: ops.const(1e-4),
   zero: ops.const(0.0),
@@ -71,17 +70,17 @@ export const INITIALIZATION: InitializationIR = {
 export const BOUNDARY_CONDITIONS: BoundaryCondition[] = [];
 
 // 3. Internal dynamics update rules (time evolution)
-const GRAVITY_CONST = 100.0;
+const GRAVITY_CONST = 10.0;
 export const DYNAMICS_RULES: DynamicsRule[] = [
   {
     target_state: 'pos_x',
     // Position update: x += v_x * dt
-    expr: ops.add(STATE_VARS.pos_x, ops.mul(STATE_VARS.vel_x, CONSTANTS.dt)),
+    expr: ops.add(STATE_VARS.pos_x, STATE_VARS.vel_x),
   },
   {
     target_state: 'pos_y',
     // Position update: y += v_y * dt
-    expr: ops.add(STATE_VARS.pos_y, ops.mul(STATE_VARS.vel_y, CONSTANTS.dt)),
+    expr: ops.add(STATE_VARS.pos_y, STATE_VARS.vel_y),
   },
   {
     target_state: 'vel_x',
@@ -116,7 +115,7 @@ export const DYNAMICS_RULES: DynamicsRule[] = [
       );
       const g = ops.add(ops.const(GRAVITY_CONST), _keep_params);
 
-      const dv = ops.mul(ops.mul(g, ax_grav), CONSTANTS.dt);
+      const dv = ops.mul(g, ax_grav);
       return ops.add(vx, dv);
     })(),
   },
@@ -149,8 +148,7 @@ export const DYNAMICS_RULES: DynamicsRule[] = [
         ops.mul(GENETIC_PARAMS.dummy_attr, CONSTANTS.zero)
       );
       const g = ops.add(ops.const(GRAVITY_CONST), _keep_params);
-
-      const dv = ops.mul(ops.mul(g, ay_grav), CONSTANTS.dt);
+      const dv = ops.mul(g, ay_grav);
       return ops.add(vy, dv);
     })(),
   },
