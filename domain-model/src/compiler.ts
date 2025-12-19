@@ -11,6 +11,7 @@ import {
   DYNAMICS_RULES,
   STATE_VAR_ORDER,
   VISUAL_MAPPING,
+  SIM_CONSTANTS,
 } from './definition.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -268,6 +269,7 @@ function compileRules(rules: DynamicsRule[]): OutputIR {
 
   return {
     state_vars: stateVars,
+    constants: SIM_CONSTANTS,
     groups,
     boundary_conditions: BOUNDARY_CONDITIONS,
     initialization,

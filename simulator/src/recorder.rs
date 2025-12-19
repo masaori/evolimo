@@ -17,7 +17,6 @@ pub struct EvoConfig {
     pub n_agents: usize,
     pub state_dims: usize,
     pub state_labels: Vec<String>,
-    pub dt: f32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -148,7 +147,6 @@ mod tests {
                 "vel_x".to_string(),
                 "energy".to_string(),
             ],
-            dt: 0.1,
         });
 
         let mut recorder = EvoRecorder::create(&tmp_path, header.clone())?;

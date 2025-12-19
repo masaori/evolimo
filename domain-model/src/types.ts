@@ -63,6 +63,11 @@ export interface BoundaryCondition {
 // IR (Intermediate Representation) types for JSON output
 export interface OutputIR {
   state_vars: string[];
+  constants: {
+    n_agents: number;
+    gene_len: number;
+    hidden_len: number;
+  };
   groups: Record<
     string,
     {

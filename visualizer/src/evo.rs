@@ -13,8 +13,6 @@ pub struct EvoConfig {
     pub n_agents: usize,
     pub state_dims: usize,
     pub state_labels: Vec<String>,
-    #[allow(dead_code)]
-    pub dt: f32,
 }
 
 #[derive(Debug, Clone, Deserialize)]

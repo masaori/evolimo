@@ -22,18 +22,9 @@ mod _gen {
 }
 
 use _gen::phenotype::PhenotypeEngine;
-use _gen::dynamics::{update_dynamics, STATE_DIMS, STATE_VARS};
+use _gen::dynamics::{update_dynamics, STATE_DIMS, STATE_VARS, N_AGENTS, GENE_LEN, HIDDEN_LEN};
 use recorder::{EvoConfig, EvoHeader, EvoRecorder};
 
-/// Default agent count used when `EVO_N_AGENTS` is not provided. Tuned for local
-/// development; override for large-scale runs.
-const N_AGENTS: usize = 100;
-/// Length of the gene vector per agent.
-const GENE_LEN: usize = 32;
-/// Hidden layer width for the phenotype network.
-const HIDDEN_LEN: usize = 64;
-/// Simulation timestep used for metadata only.
-const DT: f32 = 0.1;
 /// How often to flush the output file during an infinite run.
 const FLUSH_INTERVAL_FRAMES: u64 = 60;
 
@@ -103,7 +94,6 @@ fn main() -> Result<()> {
         n_agents,
         state_dims: STATE_DIMS,
         state_labels: STATE_VARS.iter().map(|s| (*s).to_string()).collect(),
-        dt: DT,
     });
 
     let output_path = "sim_output.evo";

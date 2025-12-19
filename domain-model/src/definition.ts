@@ -10,6 +10,12 @@ import type {
   VisualMapping,
 } from './types.js';
 
+export const SIM_CONSTANTS = {
+  n_agents: 100,
+  gene_len: 32,
+  hidden_len: 64,
+};
+
 const WORLD_SIZE_X = 1024.0;
 const WORLD_SIZE_Y = 800.0;
 
@@ -49,11 +55,11 @@ export const STATE_VAR_ORDER: (keyof typeof STATE_VARS)[] = ['pos_x', 'pos_y', '
 // Keep this as the single source of truth for simulator initial conditions.
 export const INITIALIZATION: InitializationIR = {
   state: {
-    pos_x: { kind: 'uniform', low: -WORLD_SIZE_X / 2, high: WORLD_SIZE_X / 2 },
-    pos_y: { kind: 'uniform', low: -WORLD_SIZE_Y / 2, high: WORLD_SIZE_Y / 2 },
+    pos_x: { kind: 'uniform', low: -WORLD_SIZE_X / 6, high: WORLD_SIZE_X / 6 },
+    pos_y: { kind: 'uniform', low: -WORLD_SIZE_Y / 6, high: WORLD_SIZE_Y / 6 },
     vel_x: { kind: 'normal', mean: 0.0, std: 10.0 },
     vel_y: { kind: 'normal', mean: 0.0, std: 10.0 },
-    size: { kind: 'uniform', low: 1.0, high: 3.0 },
+    size: { kind: 'uniform', low: 1.0, high: 1.1 },
   },
   // This is used to sample the gene tensor (n_agents x gene_len).
   genes: { kind: 'normal', mean: 0.0, std: 1.0 },
@@ -65,6 +71,7 @@ export const INITIALIZATION: InitializationIR = {
 export const BOUNDARY_CONDITIONS: BoundaryCondition[] = [];
 
 // 3. Internal dynamics update rules (time evolution)
+const GRAVITY_CONST = 100.0;
 export const DYNAMICS_RULES: DynamicsRule[] = [
   {
     target_state: 'pos_x',
@@ -94,11 +101,12 @@ export const DYNAMICS_RULES: DynamicsRule[] = [
 
       // r^2 + eps to avoid singularities on the diagonal.
       const d2 = ops.add(ops.add(ops.mul(dx, dx), ops.mul(dy, dy)), CONSTANTS.eps);
-      const inv_r = ops.div(CONSTANTS.one, ops.sqrt(d2));
-      const inv_r3 = ops.div(inv_r, d2);
+      // const inv_r = ops.div(CONSTANTS.one, ops.sqrt(d2));
+      // const inv_r3 = ops.div(inv_r, d2);
+      const inv_r2 = ops.div(CONSTANTS.one, d2);
 
       // a_x = G * sum_j( m_j * dx / r^3 )  (dx points i->j)
-      const ax_grav = ops.sum(ops.mul(ops.mul(mT, dx), inv_r3), 1, true);
+      const ax_grav = ops.sum(ops.mul(ops.mul(mT, dx), inv_r2), 1, true);
 
       // Gravity strength is fully constant for now.
       // Keep 1 param per group alive (for phenotype tensor shapes) without affecting dynamics.
@@ -106,7 +114,7 @@ export const DYNAMICS_RULES: DynamicsRule[] = [
         ops.mul(GENETIC_PARAMS.grav_g, CONSTANTS.zero),
         ops.mul(GENETIC_PARAMS.dummy_attr, CONSTANTS.zero)
       );
-      const g = ops.add(ops.const(100.0), _keep_params);
+      const g = ops.add(ops.const(GRAVITY_CONST), _keep_params);
 
       const dv = ops.mul(ops.mul(g, ax_grav), CONSTANTS.dt);
       return ops.add(vx, dv);
@@ -129,9 +137,10 @@ export const DYNAMICS_RULES: DynamicsRule[] = [
 
       // r^2 + eps to avoid singularities on the diagonal.
       const d2 = ops.add(ops.add(ops.mul(dx, dx), ops.mul(dy, dy)), CONSTANTS.eps);
-      const inv_r = ops.div(CONSTANTS.one, ops.sqrt(d2));
-      const inv_r3 = ops.div(inv_r, d2);
-      const ay_grav = ops.sum(ops.mul(ops.mul(mT, dy), inv_r3), 1, true);
+      // const inv_r = ops.div(CONSTANTS.one, ops.sqrt(d2));
+      // const inv_r3 = ops.div(inv_r, d2);
+      const inv_r2 = ops.div(CONSTANTS.one, d2);
+      const ay_grav = ops.sum(ops.mul(ops.mul(mT, dy), inv_r2), 1, true);
 
       // Gravity strength is fully constant for now.
       // Keep 1 param per group alive (for phenotype tensor shapes) without affecting dynamics.
@@ -139,7 +148,7 @@ export const DYNAMICS_RULES: DynamicsRule[] = [
         ops.mul(GENETIC_PARAMS.grav_g, CONSTANTS.zero),
         ops.mul(GENETIC_PARAMS.dummy_attr, CONSTANTS.zero)
       );
-      const g = ops.add(ops.const(100.0), _keep_params);
+      const g = ops.add(ops.const(GRAVITY_CONST), _keep_params);
 
       const dv = ops.mul(ops.mul(g, ay_grav), CONSTANTS.dt);
       return ops.add(vy, dv);
