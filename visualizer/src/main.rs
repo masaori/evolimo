@@ -14,7 +14,7 @@ use evo::EvoFile;
 use mapping::{apply_scale, clamp01, eval_source, normalize, VisualMapping};
 use renderer::{Instance, Renderer};
 use winit::{
-    event::{Event, WindowEvent},
+    event::{Event, MouseScrollDelta, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
     window::WindowBuilder,
 };
@@ -99,6 +99,9 @@ fn main() -> Result<()> {
 
     let mut last_drawn_frame: usize = usize::MAX;
 
+    let mut camera_pos = [0.0, 0.0];
+    let mut zoom = 1.0;
+
     event_loop.run(move |event, elwt| {
         elwt.set_control_flow(ControlFlow::WaitUntil(next_tick));
 
@@ -114,6 +117,27 @@ fn main() -> Result<()> {
                 WindowEvent::CloseRequested => elwt.exit(),
                 WindowEvent::Resized(size) => {
                     renderer.resize(size.width, size.height);
+                }
+                WindowEvent::TouchpadMagnify { delta, .. } => {
+                    zoom *= 1.0 + delta as f32;
+                    zoom = zoom.max(0.01).min(1000.0);
+                    renderer.update_camera(camera_pos, zoom);
+                    window.request_redraw();
+                }
+                WindowEvent::MouseWheel { delta, .. } => {
+                    match delta {
+                        MouseScrollDelta::PixelDelta(pos) => {
+                            camera_pos[0] -= pos.x as f32 / zoom;
+                            camera_pos[1] += pos.y as f32 / zoom;
+                        }
+                        MouseScrollDelta::LineDelta(x, y) => {
+                            let speed = 20.0;
+                            camera_pos[0] -= x * speed / zoom;
+                            camera_pos[1] += y * speed / zoom;
+                        }
+                    }
+                    renderer.update_camera(camera_pos, zoom);
+                    window.request_redraw();
                 }
                 WindowEvent::RedrawRequested => {
                     fps_frames = fps_frames.saturating_add(1);
@@ -148,10 +172,10 @@ fn main() -> Result<()> {
                             return;
                         }
 
-                        let w = renderer.config.width as f32;
-                        let h = renderer.config.height as f32;
-                        let cx = w * 0.5;
-                        let cy = h * 0.5;
+                        // let w = renderer.config.width as f32;
+                        // let h = renderer.config.height as f32;
+                        // let cx = w * 0.5;
+                        // let cy = h * 0.5;
 
                         instances.clear();
                         instances.reserve(n_agents);
@@ -199,7 +223,8 @@ fn main() -> Result<()> {
                                 rgb = colormap_rgb(&color_map.colormap, t).unwrap_or(rgb);
                             }
 
-                            let center_px = [pos_x + cx, cy - pos_y];
+                            // let center_px = [pos_x + cx, cy - pos_y];
+                            let center_px = [pos_x, pos_y];
                             let color = [
                                 rgb[0] as f32 / 255.0,
                                 rgb[1] as f32 / 255.0,

@@ -6,7 +6,9 @@ use wgpu::util::DeviceExt;
 #[derive(Debug, Clone, Copy, Pod, Zeroable)]
 pub struct Uniforms {
     pub screen_size: [f32; 2],
-    pub _pad: [f32; 2],
+    pub camera_pos: [f32; 2],
+    pub zoom: f32,
+    pub _pad: [f32; 3],
 }
 
 #[repr(C)]
@@ -66,6 +68,9 @@ pub struct Renderer {
 
     instance_buf: wgpu::Buffer,
     instance_capacity: usize,
+
+    pub camera_pos: [f32; 2],
+    pub zoom: f32,
 }
 
 impl Renderer {
@@ -122,7 +127,9 @@ impl Renderer {
 
         let uniforms = Uniforms {
             screen_size: [config.width as f32, config.height as f32],
-            _pad: [0.0, 0.0],
+            camera_pos: [0.0, 0.0],
+            zoom: 1.0,
+            _pad: [0.0; 3],
         };
         let uniform_buf = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("uniforms"),
@@ -233,6 +240,8 @@ impl Renderer {
             uniform_bind_group,
             instance_buf,
             instance_capacity,
+            camera_pos: [0.0, 0.0],
+            zoom: 1.0,
         };
 
         Ok(renderer)
@@ -242,9 +251,21 @@ impl Renderer {
         self.config.width = width.max(1);
         self.config.height = height.max(1);
         self.surface.configure(&self.device, &self.config);
+        self.update_uniforms();
+    }
+
+    pub fn update_camera(&mut self, pos: [f32; 2], zoom: f32) {
+        self.camera_pos = pos;
+        self.zoom = zoom;
+        self.update_uniforms();
+    }
+
+    fn update_uniforms(&self) {
         let uniforms = Uniforms {
             screen_size: [self.config.width as f32, self.config.height as f32],
-            _pad: [0.0, 0.0],
+            camera_pos: self.camera_pos,
+            zoom: self.zoom,
+            _pad: [0.0; 3],
         };
         self.queue
             .write_buffer(&self.uniform_buf, 0, bytemuck::bytes_of(&uniforms));
