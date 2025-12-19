@@ -18,11 +18,11 @@ pub fn init_state(
     n_agents: usize,
     device: &candle_core::Device,
 ) -> candle_core::Result<candle_core::Tensor> {
-    let init_pos_x = candle_core::Tensor::rand(-170.66667f32, 170.66667f32, (n_agents, 1), device)?;
-    let init_pos_y = candle_core::Tensor::rand(-133.33333f32, 133.33333f32, (n_agents, 1), device)?;
+    let init_pos_x = candle_core::Tensor::rand(-200f32, 200f32, (n_agents, 1), device)?;
+    let init_pos_y = candle_core::Tensor::rand(-200f32, 200f32, (n_agents, 1), device)?;
     let init_vel_x = candle_core::Tensor::randn(0f32, 10f32, (n_agents, 1), device)?;
     let init_vel_y = candle_core::Tensor::randn(0f32, 10f32, (n_agents, 1), device)?;
-    let init_size = candle_core::Tensor::rand(1f32, 1.1f32, (n_agents, 1), device)?;
+    let init_size = candle_core::Tensor::rand(1f32, 10f32, (n_agents, 1), device)?;
 
     candle_core::Tensor::cat(&[
         &init_pos_x,
@@ -55,7 +55,7 @@ pub fn update_dynamics(
     let pos_x = temp_0;
     let temp_1 = s_pos_y.broadcast_add(&s_vel_y)?;
     let pos_y = temp_1;
-    let temp_2 = candle_core::Tensor::new(&[10f32], state.device())?;
+    let temp_2 = candle_core::Tensor::new(&[0.01f32], state.device())?;
     let temp_3 = candle_core::Tensor::new(&[0f32], state.device())?;
     let temp_4 = p_grav_g.broadcast_mul(&temp_3)?;
     let temp_5 = p_dummy_attr.broadcast_mul(&temp_3)?;
@@ -86,6 +86,30 @@ pub fn update_dynamics(
     let temp_29 = s_vel_y.broadcast_add(&temp_28)?;
     let vel_y = temp_29;
     let size = s_size;
+
+    // Boundary conditions
+    // torus wrap: pos_x in [-5120.000000,5120.000000]
+    let pos_x = {
+        let min = candle_core::Tensor::new(&[-5120.000000f32], state.device())?;
+        let width = candle_core::Tensor::new(&[10240.000000f32], state.device())?;
+        let norm = pos_x.broadcast_sub(&min)?;
+        let div = norm.broadcast_div(&width)?;
+        let floor = div.floor()?;
+        let term = floor.broadcast_mul(&width)?;
+        let rem = norm.broadcast_sub(&term)?;
+        rem.broadcast_add(&min)?
+    };
+    // torus wrap: pos_y in [-4000.000000,4000.000000]
+    let pos_y = {
+        let min = candle_core::Tensor::new(&[-4000.000000f32], state.device())?;
+        let width = candle_core::Tensor::new(&[8000.000000f32], state.device())?;
+        let norm = pos_y.broadcast_sub(&min)?;
+        let div = norm.broadcast_div(&width)?;
+        let floor = div.floor()?;
+        let term = floor.broadcast_mul(&width)?;
+        let rem = norm.broadcast_sub(&term)?;
+        rem.broadcast_add(&min)?
+    };
 
     // Concatenate updated state
     candle_core::Tensor::cat(&[

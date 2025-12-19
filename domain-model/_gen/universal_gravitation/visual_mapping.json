@@ -13,6 +13,6 @@
       2,
       20
     ],
-    "scale": "sqrt"
+    "scale": "linear"
   }
 }

@@ -479,7 +479,6 @@ fn generate_dynamics(ir: &ConfigIR, out_dir: &Path) {
     // Boundary conditions (applied after dynamics operations, before returning state)
     if !ir.boundary_conditions.is_empty() {
         code.push_str("\n    // Boundary conditions\n");
-        code.push_str("    let n_agents = state.dims()[0];\n");
         for bc in &ir.boundary_conditions {
             if bc.kind != "torus" {
                 continue;
@@ -490,21 +489,25 @@ fn generate_dynamics(ir: &ConfigIR, out_dir: &Path) {
                 "    // torus wrap: {} in [{:.6},{:.6}]\n",
                 bc.target_state, min, max
             ));
+            code.push_str(&format!("    let {} = {{\n", bc.target_state));
             code.push_str(&format!(
-                "    let mut _bc_col = {}.to_vec2::<f32>()?;\n",
+                "        let min = candle_core::Tensor::new(&[{:.6}f32], state.device())?;\n",
+                min
+            ));
+            code.push_str(&format!(
+                "        let width = candle_core::Tensor::new(&[{:.6}f32], state.device())?;\n",
+                width
+            ));
+            code.push_str(&format!(
+                "        let norm = {}.broadcast_sub(&min)?;\n",
                 bc.target_state
             ));
-            code.push_str(
-                "    let mut _bc_flat: Vec<f32> = _bc_col.into_iter().map(|r| r[0]).collect();\n",
-            );
-            code.push_str(&format!(
-                "    for v in _bc_flat.iter_mut() {{ *v = (*v - ({:.6}f32)).rem_euclid({:.6}f32) + ({:.6}f32); }}\n",
-                min, width, min
-            ));
-            code.push_str(&format!(
-                "    let {} = candle_core::Tensor::from_vec(_bc_flat, (n_agents, 1), state.device())?;\n",
-                bc.target_state
-            ));
+            code.push_str("        let div = norm.broadcast_div(&width)?;\n");
+            code.push_str("        let floor = div.floor()?;\n");
+            code.push_str("        let term = floor.broadcast_mul(&width)?;\n");
+            code.push_str("        let rem = norm.broadcast_sub(&term)?;\n");
+            code.push_str("        rem.broadcast_add(&min)?\n");
+            code.push_str("    };\n");
         }
     }
 

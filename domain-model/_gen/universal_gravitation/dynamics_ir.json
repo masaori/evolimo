@@ -25,18 +25,35 @@
       ]
     }
   },
-  "boundary_conditions": [],
+  "boundary_conditions": [
+    {
+      "target_state": "pos_x",
+      "kind": "torus",
+      "range": [
+        -5120,
+        5120
+      ]
+    },
+    {
+      "target_state": "pos_y",
+      "kind": "torus",
+      "range": [
+        -4000,
+        4000
+      ]
+    }
+  ],
   "initialization": {
     "state": {
       "pos_x": {
         "kind": "uniform",
-        "low": -170.66666666666666,
-        "high": 170.66666666666666
+        "low": -200,
+        "high": 200
       },
       "pos_y": {
         "kind": "uniform",
-        "low": -133.33333333333334,
-        "high": 133.33333333333334
+        "low": -200,
+        "high": 200
       },
       "vel_x": {
         "kind": "normal",
@@ -51,7 +68,7 @@
       "size": {
         "kind": "uniform",
         "low": 1,
-        "high": 1.1
+        "high": 10
       }
     },
     "genes": {
@@ -94,7 +111,7 @@
     {
       "target": "temp_2",
       "op": "const",
-      "value": 10
+      "value": 0.01
     },
     {
       "target": "p_grav_g",

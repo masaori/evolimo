@@ -16,8 +16,8 @@ export const SIM_CONSTANTS = {
   hidden_len: 64,
 };
 
-const WORLD_SIZE_X = 1024.0;
-const WORLD_SIZE_Y = 800.0;
+const WORLD_SIZE_X = 10240.0;
+const WORLD_SIZE_Y = 8000.0;
 
 // 1. Parameter group definitions (Phenotype Engine output structure)
 export const PARAMETER_GROUPS: ParameterGroups = {
@@ -54,23 +54,32 @@ export const STATE_VAR_ORDER: (keyof typeof STATE_VARS)[] = ['pos_x', 'pos_y', '
 // Keep this as the single source of truth for simulator initial conditions.
 export const INITIALIZATION: InitializationIR = {
   state: {
-    pos_x: { kind: 'uniform', low: -WORLD_SIZE_X / 6, high: WORLD_SIZE_X / 6 },
-    pos_y: { kind: 'uniform', low: -WORLD_SIZE_Y / 6, high: WORLD_SIZE_Y / 6 },
+    pos_x: { kind: 'uniform', low: -200.0, high: 200.0 },
+    pos_y: { kind: 'uniform', low: -200.0, high: 200.0 },
     vel_x: { kind: 'normal', mean: 0.0, std: 10.0 },
     vel_y: { kind: 'normal', mean: 0.0, std: 10.0 },
-    size: { kind: 'uniform', low: 1.0, high: 1.1 },
+    size: { kind: 'uniform', low: 1.0, high: 10.0 },
   },
   // This is used to sample the gene tensor (n_agents x gene_len).
   genes: { kind: 'normal', mean: 0.0, std: 1.0 },
 };
 
 // 2.6. Boundary conditions
-// Boundary conditions are intentionally disabled for now to keep the
-// implementation purely tensor-based (no CPU-side rem_euclid).
-export const BOUNDARY_CONDITIONS: BoundaryCondition[] = [];
+export const BOUNDARY_CONDITIONS: BoundaryCondition[] = [
+  {
+    target_state: 'pos_x',
+    kind: 'torus',
+    range: [-WORLD_SIZE_X / 2, WORLD_SIZE_X / 2],
+  },
+  {
+    target_state: 'pos_y',
+    kind: 'torus',
+    range: [-WORLD_SIZE_Y / 2, WORLD_SIZE_Y / 2],
+  },
+];
 
 // 3. Internal dynamics update rules (time evolution)
-const GRAVITY_CONST = 10.0;
+const GRAVITY_CONST = 1.0;
 export const DYNAMICS_RULES: DynamicsRule[] = [
   {
     target_state: 'pos_x',
@@ -164,7 +173,7 @@ export const VISUAL_MAPPING: VisualMapping = {
     source: 'size',
     valueRange: [1, 10],
     range: [2, 20],
-    scale: 'sqrt',
+    scale: 'linear',
   },
 };
 
