@@ -1,18 +1,9 @@
 // Compiler: TypeScript definitions -> JSON IR
 
-import { writeFileSync } from 'node:fs';
-import { join, dirname } from 'node:path';
+import { writeFileSync, readdirSync, mkdirSync } from 'node:fs';
+import { join, dirname, basename, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import type { DynamicsRule, Expression, InitializationIR, OutputIR, Operation } from './types.js';
-import {
-  BOUNDARY_CONDITIONS,
-  INITIALIZATION,
-  PARAMETER_GROUPS,
-  DYNAMICS_RULES,
-  STATE_VAR_ORDER,
-  VISUAL_MAPPING,
-  SIM_CONSTANTS,
-} from './definition.js';
+import type { DynamicsRule, Expression, InitializationIR, OutputIR, Operation, ParameterGroups, BoundaryCondition } from './types.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -150,7 +141,14 @@ function compileExpression(expr: Expression, ctx: CompilerContext): string {
 }
 
 // Compile all rules to IR
-function compileRules(rules: DynamicsRule[]): OutputIR {
+function compileRules(
+  rules: DynamicsRule[],
+  stateVarOrder: string[],
+  simConstants: any,
+  parameterGroups: ParameterGroups,
+  boundaryConditions: BoundaryCondition[],
+  initialization: InitializationIR
+): OutputIR {
   const ctx: CompilerContext = {
     tempVarCounter: 0,
     operations: [],
@@ -187,7 +185,7 @@ function compileRules(rules: DynamicsRule[]): OutputIR {
 
   // Produce ordered list of state vars.
   const ordered: string[] = [];
-  for (const name of STATE_VAR_ORDER) {
+  for (const name of stateVarOrder) {
     if (stateVarSet.has(name)) ordered.push(name);
   }
   for (const name of Array.from(stateVarSet).sort()) {
@@ -199,7 +197,7 @@ function compileRules(rules: DynamicsRule[]): OutputIR {
   const groups: OutputIR['groups'] = {};
   const paramsPerGroup = new Map<string, Set<string>>();
 
-  for (const [_key, config] of Object.entries(PARAMETER_GROUPS)) {
+  for (const [_key, config] of Object.entries(parameterGroups)) {
     groups[config.name] = {
       activation: config.activation,
       params: [],
@@ -260,7 +258,6 @@ function compileRules(rules: DynamicsRule[]): OutputIR {
   }
 
   // Validate initialization coverage for state vars.
-  const initialization: InitializationIR = INITIALIZATION;
   for (const name of stateVars) {
     if (!(name in initialization.state)) {
       throw new Error(`INITIALIZATION.state is missing state var: ${name}`);
@@ -269,31 +266,58 @@ function compileRules(rules: DynamicsRule[]): OutputIR {
 
   return {
     state_vars: stateVars,
-    constants: SIM_CONSTANTS,
+    constants: simConstants,
     groups,
-    boundary_conditions: BOUNDARY_CONDITIONS,
+    boundary_conditions: boundaryConditions,
     initialization,
     operations: ctx.operations,
   };
 }
 
 // Main compilation
-function main(): void {
+async function main() {
   console.log('🔧 Compiling TypeScript definitions to JSON IR...');
 
-  const ir = compileRules(DYNAMICS_RULES);
+  const definitionsDir = join(__dirname, 'definitions');
+  const files = readdirSync(definitionsDir).filter(f => f.endsWith('.ts') || f.endsWith('.js'));
 
-  const outputPath = join(__dirname, '../_gen/dynamics_ir.json');
-  writeFileSync(outputPath, JSON.stringify(ir, null, 2), 'utf-8');
-  console.log('✅ Generated:', outputPath);
-  console.log(`   - State variables: ${ir.state_vars.length}`);
-  console.log(`   - Parameter groups: ${Object.keys(ir.groups).length}`);
-  console.log(`   - Operations: ${ir.operations.length}`);
+  for (const file of files) {
+    const name = basename(file, extname(file));
+    console.log(`   Processing definition: ${name}`);
 
-  // Export visual mapping configuration
-  const visualPath = join(__dirname, '../_gen/visual_mapping.json');
-  writeFileSync(visualPath, JSON.stringify(VISUAL_MAPPING, null, 2), 'utf-8');
-  console.log('✅ Generated:', visualPath);
+    const modulePath = join(definitionsDir, file);
+    const mod = await import(modulePath);
+
+    const {
+      BOUNDARY_CONDITIONS,
+      INITIALIZATION,
+      PARAMETER_GROUPS,
+      DYNAMICS_RULES,
+      STATE_VAR_ORDER,
+      VISUAL_MAPPING,
+      SIM_CONSTANTS,
+    } = mod;
+
+    const ir = compileRules(
+      DYNAMICS_RULES,
+      STATE_VAR_ORDER,
+      SIM_CONSTANTS,
+      PARAMETER_GROUPS,
+      BOUNDARY_CONDITIONS,
+      INITIALIZATION
+    );
+
+    const outputDir = join(__dirname, '../_gen', name);
+    mkdirSync(outputDir, { recursive: true });
+
+    const outputPath = join(outputDir, 'dynamics_ir.json');
+    writeFileSync(outputPath, JSON.stringify(ir, null, 2), 'utf-8');
+    
+    const visualPath = join(outputDir, 'visual_mapping.json');
+    writeFileSync(visualPath, JSON.stringify(VISUAL_MAPPING, null, 2), 'utf-8');
+    
+    console.log(`   ✅ Generated: ${outputPath}`);
+  }
 }
 
 main();

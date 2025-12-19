@@ -98,29 +98,37 @@ struct Operation {
 }
 
 fn main() {
-    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let repo_root = manifest_dir
-        .join("..")
-        .join("..")
-        .join("..");
+    let args: Vec<String> = std::env::args().collect();
+    if args.len() < 3 {
+        eprintln!("Usage: generate-phenotype-physics <input_json> <output_dir>");
+        std::process::exit(1);
+    }
 
-    let json_path = repo_root.join("domain-model/_gen/dynamics_ir.json");
+    let json_path = PathBuf::from(&args[1]);
+    let out_dir = PathBuf::from(&args[2]);
 
     if !json_path.exists() {
-        eprintln!("⚠️  dynamics_ir.json not found. Run 'npm run build' in domain-model/ first.");
-        eprintln!("   Skipping code generation.");
-        return;
+        eprintln!("⚠️  JSON not found: {:?}", json_path);
+        std::process::exit(1);
+    }
+
+    if !out_dir.exists() {
+        fs::create_dir_all(&out_dir).expect("Failed to create output directory");
     }
 
     let json_str = fs::read_to_string(&json_path).expect("Failed to read dynamics_ir.json");
     let ir: ConfigIR = serde_json::from_str(&json_str).expect("Invalid JSON format");
 
-    let out_dir = repo_root.join("simulator/src/_gen");
-
     generate_phenotype(&ir, &out_dir);
     generate_dynamics(&ir, &out_dir);
+    generate_mod_rs(&out_dir);
 
-    println!("✅ Generated Rust code in src/_gen/");
+    println!("✅ Generated Rust code in {:?}", out_dir);
+}
+
+fn generate_mod_rs(out_dir: &Path) {
+    let content = "pub mod phenotype;\npub mod dynamics;\n";
+    fs::write(out_dir.join("mod.rs"), content).expect("Failed to write mod.rs");
 }
 
 fn generate_phenotype(ir: &ConfigIR, out_dir: &Path) {

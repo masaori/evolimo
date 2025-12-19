@@ -22,13 +22,17 @@ use winit::{
 #[derive(Debug, Parser)]
 #[command(name = "evolimo-visualizer")]
 struct Args {
+    /// Definition name (used to set defaults for input and mapping)
+    #[arg(long)]
+    def: Option<String>,
+
     /// Path to sim_output.evo
-    #[arg(long, default_value = "../simulator/sim_output.evo")]
-    input: PathBuf,
+    #[arg(long)]
+    input: Option<PathBuf>,
 
     /// Path to visual_mapping.json
-    #[arg(long, default_value = "../domain-model/_gen/visual_mapping.json")]
-    mapping: PathBuf,
+    #[arg(long)]
+    mapping: Option<PathBuf>,
 
     /// Simulation playback FPS
     #[arg(long, default_value_t = 60.0)]
@@ -54,15 +58,25 @@ fn main() -> Result<()> {
         bail!("--sim-fps must be a positive finite number");
     }
 
-    let mapping_bytes = fs::read(&args.mapping)
-        .with_context(|| format!("failed to read mapping: {:?}", args.mapping))?;
+    let def = args.def.as_deref().unwrap_or("universal_gravitation");
+
+    let input_path = args.input.unwrap_or_else(|| {
+        PathBuf::from(format!("../simulator/output/{}.evo", def))
+    });
+
+    let mapping_path = args.mapping.unwrap_or_else(|| {
+        PathBuf::from(format!("../domain-model/_gen/{}/visual_mapping.json", def))
+    });
+
+    let mapping_bytes = fs::read(&mapping_path)
+        .with_context(|| format!("failed to read mapping: {:?}", mapping_path))?;
     let mapping: VisualMapping =
         serde_json::from_slice(&mapping_bytes).context("failed to parse mapping JSON")?;
 
-    let evo = EvoFile::open(&args.input)?;
+    let evo = EvoFile::open(&input_path)?;
     let total_frames = evo.total_frames();
     if total_frames == 0 {
-        bail!("no frames found in {:?}", args.input);
+        bail!("no frames found in {:?}", input_path);
     }
 
     let idx_x = evo
