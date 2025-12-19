@@ -7,6 +7,7 @@ simulator/target
 simulator/Cargo.lock
 simulator/scripts/generators/target
 simulator/*_output.evo
+simulator/output
 
 # Visualizer
 visualizer/node_modules
