@@ -33,7 +33,11 @@ export type Expression =
   | { op: 'stencil'; value: Expression; range: number }
   | { op: 'grid_gather'; value: Expression; x: Expression; y: Expression }
   | { op: 'cat'; values: Expression[]; dim: number }
-  | { op: 'slice'; value: Expression; dim: number; start: number; len: number };
+  | { op: 'slice'; value: Expression; dim: number; start: number; len: number }
+  | { op: 'lt'; left: Expression; right: Expression }
+  | { op: 'gt'; left: Expression; right: Expression }
+  | { op: 'ge'; left: Expression; right: Expression }
+  | { op: 'where'; cond: Expression; trueVal: Expression; falseVal: Expression };
 
 // Internal dynamics rule definition
 export interface DynamicsRule {
@@ -112,7 +116,11 @@ export interface Operation {
     | 'stencil'
     | 'grid_gather'
     | 'cat'
-    | 'slice';
+    | 'slice'
+    | 'lt'
+    | 'gt'
+    | 'ge'
+    | 'where';
   args: string[]; // Variable names of operands
   value?: number; // For const op
   param_info?: { name: string; group: string }; // For ref_param op
@@ -133,44 +141,44 @@ export type SizeScale = 'linear' | 'sqrt' | 'log';
 export type BlendMode = 'add' | 'average' | 'max' | 'min';
 
 // Single or multiple sources with optional weights
-export type VisualSource = 
-  | string  // Single source: state variable name
+export type VisualSource =
+  | string // Single source: state variable name
   | {
-      sources: string[];  // Multiple state variables
-      weights?: number[];  // Optional weights (must sum to 1.0)
-      blend?: BlendMode;   // How to combine multiple sources
+      sources: string[]; // Multiple state variables
+      weights?: number[]; // Optional weights (must sum to 1.0)
+      blend?: BlendMode; // How to combine multiple sources
     };
 
 export interface VisualMapping {
   // Position mapping (required, single source per axis)
   position: {
-    x: string;  // State variable name
-    y: string;  // State variable name
+    x: string; // State variable name
+    y: string; // State variable name
   };
-  
+
   // Size mapping (optional, supports multi-source)
   size?: {
     source: VisualSource;
     // Input value range used to normalize the (possibly blended) source into [0, 1].
     // If omitted, the source is assumed to already be normalized.
     valueRange?: [number, number];
-    range: [number, number];  // [min_radius, max_radius] in pixels
+    range: [number, number]; // [min_radius, max_radius] in pixels
     scale?: SizeScale;
   };
-  
+
   // Color mapping (optional, supports multi-source)
   color?: {
     source: VisualSource;
     colormap: ColorMap;
-    range?: [number, number];  // Data value range for mapping
+    range?: [number, number]; // Data value range for mapping
   };
-  
+
   // Opacity mapping (optional, supports multi-source)
   opacity?: {
     source: VisualSource;
     // Input value range used to normalize the (possibly blended) source into [0, 1].
     // If omitted, the source is assumed to already be normalized.
     valueRange?: [number, number];
-    range: [number, number];  // [0.0, 1.0]
+    range: [number, number]; // [0.0, 1.0]
   };
 }

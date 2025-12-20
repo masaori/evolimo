@@ -60,7 +60,13 @@ const CONSTANTS = {
 } as const;
 
 // Canonical state ordering used for the simulator state tensor.
-export const STATE_VAR_ORDER: (keyof typeof STATE_VARS)[] = ['pos_x', 'pos_y', 'vel_x', 'vel_y', 'size'];
+export const STATE_VAR_ORDER: (keyof typeof STATE_VARS)[] = [
+  'pos_x',
+  'pos_y',
+  'vel_x',
+  'vel_y',
+  'size',
+];
 
 // 3. Initialization configuration
 export const INITIALIZATION: InitializationIR = {
@@ -105,13 +111,10 @@ export const DYNAMICS_RULES: DynamicsRule[] = [
     target_state: 'vel_x',
     expr: (() => {
       // 1. Prepare state tensor for grid: [pos_x, pos_y, vel_x, vel_y, size]
-      const state_vec = ops.cat([
-        STATE_VARS.pos_x,
-        STATE_VARS.pos_y,
-        STATE_VARS.vel_x,
-        STATE_VARS.vel_y,
-        STATE_VARS.size
-      ], 1);
+      const state_vec = ops.cat(
+        [STATE_VARS.pos_x, STATE_VARS.pos_y, STATE_VARS.vel_x, STATE_VARS.vel_y, STATE_VARS.size],
+        1
+      );
 
       // 2. Scatter particles to Grid → [H, W, Cap, 5]
       const grid_state = ops.grid_scatter(state_vec, STATE_VARS.pos_x, STATE_VARS.pos_y);
@@ -143,13 +146,10 @@ export const DYNAMICS_RULES: DynamicsRule[] = [
     target_state: 'vel_y',
     expr: (() => {
       // Same grid computation (compiler should optimize if possible)
-      const state_vec = ops.cat([
-        STATE_VARS.pos_x,
-        STATE_VARS.pos_y,
-        STATE_VARS.vel_x,
-        STATE_VARS.vel_y,
-        STATE_VARS.size
-      ], 1);
+      const state_vec = ops.cat(
+        [STATE_VARS.pos_x, STATE_VARS.pos_y, STATE_VARS.vel_x, STATE_VARS.vel_y, STATE_VARS.size],
+        1
+      );
 
       const grid_state = ops.grid_scatter(state_vec, STATE_VARS.pos_x, STATE_VARS.pos_y);
       const force_grid = ops.stencil(grid_state, 1);

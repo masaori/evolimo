@@ -3,7 +3,16 @@
 import { writeFileSync, readdirSync, mkdirSync } from 'node:fs';
 import { join, dirname, basename, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import type { DynamicsRule, Expression, InitializationIR, OutputIR, Operation, ParameterGroups, BoundaryCondition, GridConfig } from './types.js';
+import type {
+  DynamicsRule,
+  Expression,
+  InitializationIR,
+  OutputIR,
+  Operation,
+  ParameterGroups,
+  BoundaryCondition,
+  GridConfig,
+} from './types.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -43,6 +52,7 @@ function compileExpression(expr: Expression, ctx: CompilerContext): string {
       ctx.operations.push({
         target: resultVar,
         op: 'ref_param',
+        args: [],
         param_info: { name: expr.id, group: expr.group },
       });
       ctx.varMap.set(exprKey, resultVar);
@@ -59,6 +69,7 @@ function compileExpression(expr: Expression, ctx: CompilerContext): string {
       ctx.operations.push({
         target: resultVar,
         op: 'const',
+        args: [],
         value: expr.value,
       });
       ctx.varMap.set(exprKey, resultVar);
@@ -67,7 +78,10 @@ function compileExpression(expr: Expression, ctx: CompilerContext): string {
     case 'add':
     case 'sub':
     case 'mul':
-    case 'div': {
+    case 'div':
+    case 'lt':
+    case 'gt':
+    case 'ge': {
       const left = compileExpression(expr.left, ctx);
       const right = compileExpression(expr.right, ctx);
       resultVar = getTempVar(ctx);
@@ -75,6 +89,20 @@ function compileExpression(expr: Expression, ctx: CompilerContext): string {
         target: resultVar,
         op: expr.op,
         args: [left, right],
+      });
+      ctx.varMap.set(exprKey, resultVar);
+      return resultVar;
+    }
+
+    case 'where': {
+      const cond = compileExpression(expr.cond, ctx);
+      const trueVal = compileExpression(expr.trueVal, ctx);
+      const falseVal = compileExpression(expr.falseVal, ctx);
+      resultVar = getTempVar(ctx);
+      ctx.operations.push({
+        target: resultVar,
+        op: 'where',
+        args: [cond, trueVal, falseVal],
       });
       ctx.varMap.set(exprKey, resultVar);
       return resultVar;
@@ -283,25 +311,52 @@ function compileRules(
 
   // First pass: collect all parameters
   function collectParams(expr: Expression): void {
-    if (expr.op === 'ref_param') {
-      const groupSet = paramsPerGroup.get(expr.group);
-      if (!groupSet) {
-        throw new Error(`Unknown group: ${expr.group}`);
+    switch (expr.op) {
+      case 'ref_param': {
+        const groupSet = paramsPerGroup.get(expr.group);
+        if (!groupSet) {
+          throw new Error(`Unknown group: ${expr.group}`);
+        }
+        groupSet.add(expr.id);
+        break;
       }
-      groupSet.add(expr.id);
-    } else if (expr.op === 'ref_aux' || expr.op === 'ref_state' || expr.op === 'const') {
-      return;
-    if ('x' in expr && typeof expr.x !== 'number') {
-      collectParams(expr.x);
-    }
-    if ('y' in expr && typeof expr.y !== 'number') {
-      collectParams(expr.y);
-    }
-    } else if ('left' in expr && 'right' in expr) {
-      collectParams(expr.left);
-      collectParams(expr.right);
-    } else if ('value' in expr && typeof expr.value !== 'number') {
-      collectParams(expr.value);
+      case 'ref_aux':
+      case 'ref_state':
+      case 'const':
+        break;
+      case 'add':
+      case 'sub':
+      case 'mul':
+      case 'div':
+      case 'lt':
+      case 'gt':
+      case 'ge':
+        collectParams(expr.left);
+        collectParams(expr.right);
+        break;
+      case 'where':
+        collectParams(expr.cond);
+        collectParams(expr.trueVal);
+        collectParams(expr.falseVal);
+        break;
+      case 'sqrt':
+      case 'relu':
+      case 'neg':
+      case 'stencil':
+      case 'transpose':
+      case 'sum':
+      case 'slice':
+        collectParams(expr.value);
+        break;
+      case 'grid_scatter':
+      case 'grid_gather':
+        collectParams(expr.value);
+        collectParams(expr.x);
+        collectParams(expr.y);
+        break;
+      case 'cat':
+        expr.values.forEach(collectParams);
+        break;
     }
   }
 
@@ -351,7 +406,7 @@ function compileRules(
     constants: simConstants,
     groups,
     boundary_conditions: boundaryConditions,
-    grid_config: gridConfig,
+    ...(gridConfig ? { grid_config: gridConfig } : {}),
     initialization,
     operations: ctx.operations,
   };
@@ -362,7 +417,7 @@ async function main() {
   console.log('🔧 Compiling TypeScript definitions to JSON IR...');
 
   const definitionsDir = join(__dirname, 'definitions');
-  const files = readdirSync(definitionsDir).filter(f => f.endsWith('.ts') || f.endsWith('.js'));
+  const files = readdirSync(definitionsDir).filter((f) => f.endsWith('.ts') || f.endsWith('.js'));
 
   for (const file of files) {
     const name = basename(file, extname(file));
@@ -397,10 +452,10 @@ async function main() {
 
     const outputPath = join(outputDir, 'dynamics_ir.json');
     writeFileSync(outputPath, JSON.stringify(ir, null, 2), 'utf-8');
-    
+
     const visualPath = join(outputDir, 'visual_mapping.json');
     writeFileSync(visualPath, JSON.stringify(VISUAL_MAPPING, null, 2), 'utf-8');
-    
+
     console.log(`   ✅ Generated: ${outputPath}`);
   }
 }

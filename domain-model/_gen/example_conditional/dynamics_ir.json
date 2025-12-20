@@ -7,9 +7,9 @@
     "size"
   ],
   "constants": {
-    "n_agents": 10000,
-    "gene_len": 32,
-    "hidden_len": 64
+    "n_agents": 100,
+    "gene_len": 10,
+    "hidden_len": 10
   },
   "groups": {
     "attributes": {
@@ -21,7 +21,7 @@
     "physics": {
       "activation": "tanh",
       "params": [
-        "grav_g"
+        "dummy_phys"
       ]
     }
   },
@@ -30,39 +30,30 @@
       "target_state": "pos_x",
       "kind": "torus",
       "range": [
-        -5120,
-        5120
+        -500,
+        500
       ]
     },
     {
       "target_state": "pos_y",
       "kind": "torus",
       "range": [
-        -4000,
-        4000
+        -500,
+        500
       ]
     }
   ],
-  "grid_config": {
-    "width": 80,
-    "height": 64,
-    "capacity": 8,
-    "cell_size": [
-      128,
-      125
-    ]
-  },
   "initialization": {
     "state": {
       "pos_x": {
         "kind": "uniform",
-        "low": -200,
-        "high": 200
+        "low": -500,
+        "high": 500
       },
       "pos_y": {
         "kind": "uniform",
-        "low": -200,
-        "high": 200
+        "low": -500,
+        "high": 500
       },
       "vel_x": {
         "kind": "normal",
@@ -89,103 +80,114 @@
   "operations": [
     {
       "target": "temp_0",
+      "op": "const",
+      "args": [],
+      "value": 0.1
+    },
+    {
+      "target": "temp_1",
+      "op": "mul",
+      "args": [
+        "s_vel_x",
+        "temp_0"
+      ]
+    },
+    {
+      "target": "temp_2",
       "op": "add",
       "args": [
         "s_pos_x",
-        "s_vel_x"
+        "temp_1"
       ]
     },
     {
       "target": "pos_x",
       "op": "add",
       "args": [
+        "temp_2"
+      ]
+    },
+    {
+      "target": "temp_3",
+      "op": "mul",
+      "args": [
+        "s_vel_y",
         "temp_0"
       ]
     },
     {
-      "target": "temp_1",
+      "target": "temp_4",
       "op": "add",
       "args": [
         "s_pos_y",
-        "s_vel_y"
+        "temp_3"
       ]
     },
     {
       "target": "pos_y",
       "op": "add",
       "args": [
-        "temp_1"
+        "temp_4"
       ]
     },
     {
-      "target": "temp_2",
-      "op": "cat",
+      "target": "vel_x",
+      "op": "add",
       "args": [
-        "s_pos_x",
-        "s_pos_y",
-        "s_vel_x",
-        "s_vel_y",
-        "s_size"
-      ],
-      "dim": 1
-    },
-    {
-      "target": "temp_3",
-      "op": "grid_scatter",
-      "args": [
-        "temp_2",
-        "s_pos_x",
-        "s_pos_y"
+        "s_vel_x"
       ]
     },
     {
-      "target": "temp_4",
-      "op": "stencil",
+      "target": "vel_y",
+      "op": "add",
       "args": [
-        "temp_3"
-      ],
-      "stencil_range": 1
+        "s_vel_y"
+      ]
     },
     {
       "target": "temp_5",
-      "op": "grid_gather",
-      "args": [
-        "temp_4",
-        "s_pos_x",
-        "s_pos_y"
-      ]
-    },
-    {
-      "target": "temp_6",
-      "op": "slice",
-      "args": [
-        "temp_5"
-      ],
-      "dim": 1,
-      "start": 2,
-      "len": 1
-    },
-    {
-      "target": "p_grav_g",
-      "op": "ref_param",
-      "args": [],
-      "param_info": {
-        "name": "grav_g",
-        "group": "physics"
-      }
-    },
-    {
-      "target": "temp_7",
       "op": "const",
       "args": [],
       "value": 0
     },
     {
+      "target": "temp_6",
+      "op": "gt",
+      "args": [
+        "s_pos_x",
+        "temp_5"
+      ]
+    },
+    {
+      "target": "temp_7",
+      "op": "const",
+      "args": [],
+      "value": 1
+    },
+    {
       "target": "temp_8",
+      "op": "where",
+      "args": [
+        "temp_6",
+        "temp_7",
+        "temp_5"
+      ]
+    },
+    {
+      "target": "p_dummy_phys",
+      "op": "ref_param",
+      "args": [],
+      "param_info": {
+        "name": "dummy_phys",
+        "group": "physics"
+      }
+    },
+    {
+      "target": "temp_9",
       "op": "mul",
       "args": [
-        "p_grav_g",
-        "temp_7"
+        "p_dummy_phys",
+        "temp_5"
       ]
     },
     {
@@ -198,26 +200,18 @@
       }
     },
     {
-      "target": "temp_9",
+      "target": "temp_10",
       "op": "mul",
       "args": [
         "p_dummy_attr",
-        "temp_7"
-      ]
-    },
-    {
-      "target": "temp_10",
-      "op": "add",
-      "args": [
-        "temp_8",
-        "temp_9"
+        "temp_5"
       ]
     },
     {
       "target": "temp_11",
       "op": "add",
       "args": [
-        "temp_6",
+        "temp_9",
         "temp_10"
       ]
     },
@@ -225,55 +219,15 @@
       "target": "temp_12",
       "op": "add",
       "args": [
-        "s_vel_x",
+        "temp_8",
         "temp_11"
-      ]
-    },
-    {
-      "target": "vel_x",
-      "op": "add",
-      "args": [
-        "temp_12"
-      ]
-    },
-    {
-      "target": "temp_13",
-      "op": "slice",
-      "args": [
-        "temp_5"
-      ],
-      "dim": 1,
-      "start": 3,
-      "len": 1
-    },
-    {
-      "target": "temp_14",
-      "op": "add",
-      "args": [
-        "temp_13",
-        "temp_10"
-      ]
-    },
-    {
-      "target": "temp_15",
-      "op": "add",
-      "args": [
-        "s_vel_y",
-        "temp_14"
-      ]
-    },
-    {
-      "target": "vel_y",
-      "op": "add",
-      "args": [
-        "temp_15"
       ]
     },
     {
       "target": "size",
       "op": "add",
       "args": [
-        "s_size"
+        "temp_12"
       ]
     }
   ]

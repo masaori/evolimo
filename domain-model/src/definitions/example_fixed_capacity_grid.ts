@@ -56,7 +56,13 @@ const CONSTANTS = {
   dt: ops.const(0.1), // Time step
 } as const;
 
-export const STATE_VAR_ORDER: (keyof typeof STATE_VARS)[] = ['pos_x', 'pos_y', 'vel_x', 'vel_y', 'size'];
+export const STATE_VAR_ORDER: (keyof typeof STATE_VARS)[] = [
+  'pos_x',
+  'pos_y',
+  'vel_x',
+  'vel_y',
+  'size',
+];
 
 // 3. Dynamics Rules
 export const DYNAMICS_RULES: DynamicsRule[] = [
@@ -78,13 +84,10 @@ export const DYNAMICS_RULES: DynamicsRule[] = [
       // 1. Prepare state tensor for grid: [pos_x, pos_y, vel_x, vel_y, size]
       // We need to concatenate them along dim 1 (columns)
       // Note: ops.cat expects [N, 1] inputs and produces [N, 5]
-      const state_vec = ops.cat([
-        STATE_VARS.pos_x,
-        STATE_VARS.pos_y,
-        STATE_VARS.vel_x,
-        STATE_VARS.vel_y,
-        STATE_VARS.size
-      ], 1);
+      const state_vec = ops.cat(
+        [STATE_VARS.pos_x, STATE_VARS.pos_y, STATE_VARS.vel_x, STATE_VARS.vel_y, STATE_VARS.size],
+        1
+      );
 
       // 2. Scatter to Grid
       // grid_state: [H, W, Cap, 5]
@@ -123,31 +126,28 @@ export const DYNAMICS_RULES: DynamicsRule[] = [
       // However, the compiler dedupes based on structure/hash? No.
       // The compiler maps AST nodes to variables.
       // If we want to share, we should assign the AST node to a variable in TS.
-      
-      const state_vec = ops.cat([
-        STATE_VARS.pos_x,
-        STATE_VARS.pos_y,
-        STATE_VARS.vel_x,
-        STATE_VARS.vel_y,
-        STATE_VARS.size
-      ], 1);
+
+      const state_vec = ops.cat(
+        [STATE_VARS.pos_x, STATE_VARS.pos_y, STATE_VARS.vel_x, STATE_VARS.vel_y, STATE_VARS.size],
+        1
+      );
 
       const grid_state = ops.grid_scatter(state_vec, STATE_VARS.pos_x, STATE_VARS.pos_y);
       const force_grid = ops.stencil(grid_state, 1);
       const force_vec = ops.grid_gather(force_grid, STATE_VARS.pos_x, STATE_VARS.pos_y);
-      
+
       // Extract Force Y (index 3)
       const fy = ops.slice(force_vec, 1, 3, 1);
 
       return ops.add(STATE_VARS.vel_y, ops.mul(fy, CONSTANTS.dt));
     })(),
   },
-  
+
   // Keep size constant
   {
     target_state: 'size',
     expr: STATE_VARS.size,
-  }
+  },
 ];
 
 // 4. Visual mapping

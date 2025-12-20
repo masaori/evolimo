@@ -407,6 +407,7 @@ fn generate_dynamics(ir: &ConfigIR, out_dir: &Path) {
 
     // Function signature
     code.push_str("#[allow(dead_code)]\n");
+    code.push_str("#[allow(unused_variables)]\n");
     code.push_str("pub fn update_dynamics(\n");
     code.push_str("    state: &candle_core::Tensor,\n");
     for name in &group_names {
@@ -561,6 +562,34 @@ fn generate_dynamics(ir: &ConfigIR, out_dir: &Path) {
                 // Assignment operation (final state update)
                 op.args[0].to_string()
             }
+            "lt" if op.args.len() == 2 => {
+                format!("{{
+                    let lhs = {}.broadcast_as((state.dim(0)?, 1))?;
+                    let rhs = {}.broadcast_as((state.dim(0)?, 1))?;
+                    lhs.lt(&rhs)?.to_dtype(candle_core::DType::F32)?
+                }}", op.args[0], op.args[1])
+            }
+            "gt" if op.args.len() == 2 => {
+                format!("{{
+                    let lhs = {}.broadcast_as((state.dim(0)?, 1))?;
+                    let rhs = {}.broadcast_as((state.dim(0)?, 1))?;
+                    lhs.gt(&rhs)?.to_dtype(candle_core::DType::F32)?
+                }}", op.args[0], op.args[1])
+            }
+            "ge" if op.args.len() == 2 => {
+                format!("{{
+                    let lhs = {}.broadcast_as((state.dim(0)?, 1))?;
+                    let rhs = {}.broadcast_as((state.dim(0)?, 1))?;
+                    lhs.ge(&rhs)?.to_dtype(candle_core::DType::F32)?
+                }}", op.args[0], op.args[1])
+            }
+            "where" if op.args.len() == 3 => {
+                // Arithmetic selection: cond * (true_val - false_val) + false_val
+                // This avoids where_cond kernel issues and type casting roundtrips.
+                // Assumes cond is 0.0 or 1.0 (F32).
+                format!("{}.broadcast_mul(&{}.broadcast_sub(&{})?)?.broadcast_add(&{})?", 
+                    op.args[0], op.args[1], op.args[2], op.args[2])
+            }
             _ => {
                 eprintln!("⚠️  Unknown operation: {:?}", op);
                 "candle_core::Tensor::new(&[0f32], state.device())?".to_string()
@@ -606,9 +635,10 @@ fn generate_dynamics(ir: &ConfigIR, out_dir: &Path) {
     }
 
     code.push_str("\n    // Concatenate updated state\n");
+    code.push_str("    let n_agents = state.dim(0)?;\n");
     code.push_str("    candle_core::Tensor::cat(&[\n");
     for name in &ir.state_vars {
-        code.push_str(&format!("        &{},\n", name));
+        code.push_str(&format!("        &{}.broadcast_as((n_agents, 1))?,\n", name));
     }
     code.push_str("    ], 1)\n");
     code.push_str("}\n");

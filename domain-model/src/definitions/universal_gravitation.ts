@@ -48,7 +48,13 @@ const CONSTANTS = {
 
 // Canonical state ordering used for the simulator state tensor.
 // Keep this stable to avoid reindexing bugs between TS IR and Rust.
-export const STATE_VAR_ORDER: (keyof typeof STATE_VARS)[] = ['pos_x', 'pos_y', 'vel_x', 'vel_y', 'size'];
+export const STATE_VAR_ORDER: (keyof typeof STATE_VARS)[] = [
+  'pos_x',
+  'pos_y',
+  'vel_x',
+  'vel_y',
+  'size',
+];
 
 // 2.5. Initialization configuration (initial distributions + hyperparameters)
 // Keep this as the single source of truth for simulator initial conditions.

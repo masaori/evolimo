@@ -111,11 +111,13 @@
     {
       "target": "temp_2",
       "op": "const",
+      "args": [],
       "value": 1
     },
     {
       "target": "p_grav_g",
       "op": "ref_param",
+      "args": [],
       "param_info": {
         "name": "grav_g",
         "group": "physics"
@@ -124,6 +126,7 @@
     {
       "target": "temp_3",
       "op": "const",
+      "args": [],
       "value": 0
     },
     {
@@ -137,6 +140,7 @@
     {
       "target": "p_dummy_attr",
       "op": "ref_param",
+      "args": [],
       "param_info": {
         "name": "dummy_attr",
         "group": "attributes"
@@ -244,6 +248,7 @@
     {
       "target": "temp_17",
       "op": "const",
+      "args": [],
       "value": 0.0001
     },
     {

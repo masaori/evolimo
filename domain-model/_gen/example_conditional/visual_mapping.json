@@ -1,0 +1,26 @@
+{
+  "position": {
+    "x": "pos_x",
+    "y": "pos_y"
+  },
+  "size": {
+    "source": "size",
+    "valueRange": [
+      0,
+      100
+    ],
+    "range": [
+      5,
+      100
+    ],
+    "scale": "linear"
+  },
+  "color": {
+    "source": "pos_x",
+    "colormap": "plasma",
+    "range": [
+      -500,
+      500
+    ]
+  }
+}

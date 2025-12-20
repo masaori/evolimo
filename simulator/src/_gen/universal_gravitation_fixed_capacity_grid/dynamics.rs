@@ -43,6 +43,7 @@ pub fn init_state(
 }
 
 #[allow(dead_code)]
+#[allow(unused_variables)]
 pub fn update_dynamics(
     state: &candle_core::Tensor,
     p_physics: &candle_core::Tensor,
@@ -114,11 +115,12 @@ pub fn update_dynamics(
     };
 
     // Concatenate updated state
+    let n_agents = state.dim(0)?;
     candle_core::Tensor::cat(&[
-        &pos_x,
-        &pos_y,
-        &vel_x,
-        &vel_y,
-        &size,
+        &pos_x.broadcast_as((n_agents, 1))?,
+        &pos_y.broadcast_as((n_agents, 1))?,
+        &vel_x.broadcast_as((n_agents, 1))?,
+        &vel_y.broadcast_as((n_agents, 1))?,
+        &size.broadcast_as((n_agents, 1))?,
     ], 1)
 }
