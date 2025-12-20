@@ -3,7 +3,7 @@
 import { writeFileSync, readdirSync, mkdirSync } from 'node:fs';
 import { join, dirname, basename, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import type { DynamicsRule, Expression, InitializationIR, OutputIR, Operation, ParameterGroups, BoundaryCondition } from './types.js';
+import type { DynamicsRule, Expression, InitializationIR, OutputIR, Operation, ParameterGroups, BoundaryCondition, GridConfig } from './types.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -133,6 +133,75 @@ function compileExpression(expr: Expression, ctx: CompilerContext): string {
       return resultVar;
     }
 
+    case 'grid_scatter': {
+      const val = compileExpression(expr.value, ctx);
+      const x = compileExpression(expr.x, ctx);
+      const y = compileExpression(expr.y, ctx);
+      resultVar = getTempVar(ctx);
+      ctx.operations.push({
+        target: resultVar,
+        op: 'grid_scatter',
+        args: [val, x, y],
+      });
+      ctx.varMap.set(exprKey, resultVar);
+      return resultVar;
+    }
+
+    case 'stencil': {
+      const val = compileExpression(expr.value, ctx);
+      resultVar = getTempVar(ctx);
+      ctx.operations.push({
+        target: resultVar,
+        op: 'stencil',
+        args: [val],
+        stencil_range: expr.range,
+      });
+      ctx.varMap.set(exprKey, resultVar);
+      return resultVar;
+    }
+
+    case 'grid_gather': {
+      const val = compileExpression(expr.value, ctx);
+      const x = compileExpression(expr.x, ctx);
+      const y = compileExpression(expr.y, ctx);
+      resultVar = getTempVar(ctx);
+      ctx.operations.push({
+        target: resultVar,
+        op: 'grid_gather',
+        args: [val, x, y],
+      });
+      ctx.varMap.set(exprKey, resultVar);
+      return resultVar;
+    }
+
+    case 'cat': {
+      const args = expr.values.map((v) => compileExpression(v, ctx));
+      resultVar = getTempVar(ctx);
+      ctx.operations.push({
+        target: resultVar,
+        op: 'cat',
+        args,
+        dim: expr.dim,
+      });
+      ctx.varMap.set(exprKey, resultVar);
+      return resultVar;
+    }
+
+    case 'slice': {
+      const val = compileExpression(expr.value, ctx);
+      resultVar = getTempVar(ctx);
+      ctx.operations.push({
+        target: resultVar,
+        op: 'slice',
+        args: [val],
+        dim: expr.dim,
+        start: expr.start,
+        len: expr.len,
+      });
+      ctx.varMap.set(exprKey, resultVar);
+      return resultVar;
+    }
+
     default: {
       const _exhaustive: never = expr;
       throw new Error(`Unknown expression type: ${JSON.stringify(_exhaustive)}`);
@@ -147,7 +216,8 @@ function compileRules(
   simConstants: any,
   parameterGroups: ParameterGroups,
   boundaryConditions: BoundaryCondition[],
-  initialization: InitializationIR
+  initialization: InitializationIR,
+  gridConfig?: GridConfig
 ): OutputIR {
   const ctx: CompilerContext = {
     tempVarCounter: 0,
@@ -174,6 +244,12 @@ function compileRules(
     }
     if ('value' in expr && typeof expr.value !== 'number') {
       collectStates(expr.value);
+    }
+    if ('x' in expr && typeof expr.x !== 'number') {
+      collectStates(expr.x);
+    }
+    if ('y' in expr && typeof expr.y !== 'number') {
+      collectStates(expr.y);
     }
   }
 
@@ -215,6 +291,12 @@ function compileRules(
       groupSet.add(expr.id);
     } else if (expr.op === 'ref_aux' || expr.op === 'ref_state' || expr.op === 'const') {
       return;
+    if ('x' in expr && typeof expr.x !== 'number') {
+      collectParams(expr.x);
+    }
+    if ('y' in expr && typeof expr.y !== 'number') {
+      collectParams(expr.y);
+    }
     } else if ('left' in expr && 'right' in expr) {
       collectParams(expr.left);
       collectParams(expr.right);
@@ -269,6 +351,7 @@ function compileRules(
     constants: simConstants,
     groups,
     boundary_conditions: boundaryConditions,
+    grid_config: gridConfig,
     initialization,
     operations: ctx.operations,
   };
@@ -296,6 +379,7 @@ async function main() {
       STATE_VAR_ORDER,
       VISUAL_MAPPING,
       SIM_CONSTANTS,
+      GRID_CONFIG,
     } = mod;
 
     const ir = compileRules(
@@ -304,7 +388,8 @@ async function main() {
       SIM_CONSTANTS,
       PARAMETER_GROUPS,
       BOUNDARY_CONDITIONS,
-      INITIALIZATION
+      INITIALIZATION,
+      GRID_CONFIG
     );
 
     const outputDir = join(__dirname, '../_gen', name);

@@ -28,7 +28,12 @@ export type Expression =
   | { op: 'transpose'; value: Expression; dim0: number; dim1: number }
   | { op: 'sum'; value: Expression; dim: number; keepdim: boolean }
   | { op: 'relu'; value: Expression }
-  | { op: 'neg'; value: Expression };
+  | { op: 'neg'; value: Expression }
+  | { op: 'grid_scatter'; value: Expression; x: Expression; y: Expression }
+  | { op: 'stencil'; value: Expression; range: number }
+  | { op: 'grid_gather'; value: Expression; x: Expression; y: Expression }
+  | { op: 'cat'; values: Expression[]; dim: number }
+  | { op: 'slice'; value: Expression; dim: number; start: number; len: number };
 
 // Internal dynamics rule definition
 export interface DynamicsRule {
@@ -60,6 +65,13 @@ export interface BoundaryCondition {
   range: [number, number];
 }
 
+export interface GridConfig {
+  width: number;
+  height: number;
+  capacity: number;
+  cell_size: [number, number];
+}
+
 // IR (Intermediate Representation) types for JSON output
 export interface OutputIR {
   state_vars: string[];
@@ -68,6 +80,7 @@ export interface OutputIR {
     gene_len: number;
     hidden_len: number;
   };
+  grid_config?: GridConfig;
   groups: Record<
     string,
     {
@@ -94,14 +107,24 @@ export interface Operation {
     | 'neg'
     | 'const'
     | 'ref_state'
-    | 'ref_param';
-  args?: string[]; // References to other variables (for binary ops)
+    | 'ref_param'
+    | 'grid_scatter'
+    | 'stencil'
+    | 'grid_gather'
+    | 'cat'
+    | 'slice';
+  args: string[]; // Variable names of operands
   value?: number; // For const op
   param_info?: { name: string; group: string }; // For ref_param op
-  dim?: number; // For sum op
-  keepdim?: boolean; // For sum op
-  dim0?: number; // For transpose op
-  dim1?: number; // For transpose op
+  // Tensor ops
+  dim?: number;
+  keepdim?: boolean;
+  dim0?: number;
+  dim1?: number;
+  // Grid ops
+  stencil_range?: number;
+  start?: number;
+  len?: number;
 }
 
 // Visual mapping types for simulator output visualization

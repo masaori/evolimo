@@ -62,7 +62,7 @@ fn main() {
     mod_rs.push_str("    ($name:expr, $callback:path) => {\n");
     mod_rs.push_str("        match $name.as_str() {\n");
     for def in &definitions {
-        mod_rs.push_str(&format!("            \"{}\" => {{ $callback!(crate::_gen::{}) }},\n", def, def));
+        mod_rs.push_str(&format!("            \"{}\" => {{ use $crate::_gen::{} as def; $callback!(def) }},\n", def, def));
     }
     mod_rs.push_str("            _ => panic!(\"Unknown definition: {}\", $name),\n");
     mod_rs.push_str("        }\n");

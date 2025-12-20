@@ -14,9 +14,18 @@ struct Constants {
 }
 
 #[derive(Deserialize, Debug)]
+struct GridConfig {
+    width: usize,
+    height: usize,
+    capacity: usize,
+    cell_size: (f64, f64),
+}
+
+#[derive(Deserialize, Debug)]
 struct ConfigIR {
     state_vars: Vec<String>,
     constants: Option<Constants>,
+    grid_config: Option<GridConfig>,
     groups: HashMap<String, GroupConfig>,
     #[serde(default)]
     boundary_conditions: Vec<BoundaryCondition>,
@@ -95,6 +104,12 @@ struct Operation {
     dim0: Option<i64>,
     #[serde(default)]
     dim1: Option<i64>,
+    #[serde(default)]
+    stencil_range: Option<i32>,
+    #[serde(default)]
+    start: Option<usize>,
+    #[serde(default)]
+    len: Option<usize>,
 }
 
 fn main() {
@@ -281,6 +296,16 @@ fn generate_dynamics(ir: &ConfigIR, out_dir: &Path) {
         code.push_str("\n");
     }
 
+    if let Some(grid) = &ir.grid_config {
+        code.push_str("use crate::grid::{SpatialGrid, particles_to_grid, grid_to_particles};\n\n");
+        code.push_str("pub const GRID_CONFIG: SpatialGrid = SpatialGrid {\n");
+        code.push_str(&format!("    width: {},\n", grid.width));
+        code.push_str(&format!("    height: {},\n", grid.height));
+        code.push_str(&format!("    capacity: {},\n", grid.capacity));
+        code.push_str(&format!("    cell_size: ({:.6}, {:.6}),\n", grid.cell_size.0, grid.cell_size.1));
+        code.push_str("};\n\n");
+    }
+
     // Export state metadata for the simulator.
     code.push_str(&format!("pub const STATE_DIMS: usize = {};\n", ir.state_vars.len()));
     code.push_str(&format!("pub const STATE_VARS: [&str; {}] = [\n", ir.state_vars.len()));
@@ -413,6 +438,21 @@ fn generate_dynamics(ir: &ConfigIR, out_dir: &Path) {
     }
     code.push('\n');
 
+    // Declare indices variables for grid_scatter operations (to be reused by grid_gather)
+    let has_grid_scatter = ir.operations.iter().any(|op| op.op == "grid_scatter");
+    if has_grid_scatter {
+        code.push_str("    #[allow(unused_assignments)]\n");
+    }
+    for op in &ir.operations {
+        if op.op == "grid_scatter" {
+            code.push_str(&format!(
+                "    let mut {}_indices: candle_core::Tensor = candle_core::Tensor::zeros(1, candle_core::DType::U32, state.device())?;\n",
+                op.target
+            ));
+        }
+    }
+    code.push('\n');
+
     // Operations
     code.push_str("    // Internal dynamics operations\n");
     for op in &ir.operations {
@@ -462,6 +502,60 @@ fn generate_dynamics(ir: &ConfigIR, out_dir: &Path) {
             }
             "neg" if op.args.len() == 1 => {
                 format!("{}.neg()?", op.args[0])
+            }
+            "grid_scatter" if op.args.len() == 3 => {
+                // args: [value, x, y]
+                // Generate both grid and indices, storing indices for later reuse by grid_gather
+                format!("{{
+                    let (grid, _mask, indices) = particles_to_grid(&{}, &{}, &{}, &GRID_CONFIG)?;
+                    {}_indices = indices;
+                    grid
+                }}", op.args[1], op.args[2], op.args[0], op.target)
+            }
+            "grid_gather" if op.args.len() == 4 => {
+                // args: [grid_value, x, y, scatter_target_for_indices]
+                // Reuse indices from the referenced grid_scatter operation
+                format!("grid_to_particles(&{}, &{}_indices)?", op.args[0], op.args[3])
+            }
+            "grid_gather" if op.args.len() == 3 => {
+                // args: [value(grid), x, y]
+                // Try to find matching grid_scatter with same x, y coordinates
+                let (x_arg, y_arg) = (&op.args[1], &op.args[2]);
+                let matching_scatter = ir.operations.iter()
+                    .filter(|o| o.op == "grid_scatter" && o.args.len() == 3)
+                    .find(|o| &o.args[1] == x_arg && &o.args[2] == y_arg);
+                
+                if let Some(scatter) = matching_scatter {
+                    // Reuse indices from matching grid_scatter
+                    format!("grid_to_particles(&{}, &{}_indices)?", op.args[0], scatter.target)
+                } else {
+                    // Fallback: recalculate indices (legacy behavior)
+                    format!("{{
+                    let (_, _, indices) = particles_to_grid(&{}, &{}, state, &GRID_CONFIG)?;
+                    grid_to_particles(&{}, &indices)?
+                }}", op.args[1], op.args[2], op.args[0])
+                }
+            }
+            "cat" => {
+                let args_refs: Vec<String> = op.args.iter().map(|a| format!("&{}", a)).collect();
+                let args_str = args_refs.join(", ");
+                let dim = op.dim.unwrap_or(0);
+                format!("candle_core::Tensor::cat(&[{}], {})?", args_str, dim)
+            }
+            "slice" if op.args.len() == 1 => {
+                let dim = op.dim.unwrap_or(0);
+                let start = op.start.unwrap_or(0);
+                let len = op.len.unwrap_or(1);
+                format!("{}.narrow({}, {}, {})?", op.args[0], dim, start, len)
+            }
+            "stencil" if op.args.len() == 1 => {
+                let range = op.stencil_range.unwrap_or(1);
+                format!("crate::grid::solve_gravity_stencil(&{}, {})?", op.args[0], range)
+            }
+            "stencil" if op.args.len() == 1 => {
+                // args: [grid]
+                let range = op.stencil_range.unwrap_or(1);
+                format!("crate::grid::solve_gravity_stencil(&{}, {})?", op.args[0], range)
             }
             "add" if op.args.len() == 1 => {
                 // Assignment operation (final state update)

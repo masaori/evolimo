@@ -18,4 +18,13 @@ export const ops = {
   sum: (value: Expression, dim: number, keepdim = true): Expression => ({ op: 'sum', value, dim, keepdim }),
   relu: (value: Expression): Expression => ({ op: 'relu', value }),
   neg: (value: Expression): Expression => ({ op: 'neg', value }),
+
+  // Grid operations
+  grid_scatter: (value: Expression, x: Expression, y: Expression): Expression => ({ op: 'grid_scatter', value, x, y }),
+  stencil: (value: Expression, range: number): Expression => ({ op: 'stencil', value, range }),
+  grid_gather: (value: Expression, x: Expression, y: Expression): Expression => ({ op: 'grid_gather', value, x, y }),
+
+  // Tensor manipulation
+  cat: (values: Expression[], dim: number): Expression => ({ op: 'cat', values, dim }),
+  slice: (value: Expression, dim: number, start: number, len: number): Expression => ({ op: 'slice', value, dim, start, len }),
 } as const;

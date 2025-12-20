@@ -7,7 +7,7 @@
     "size"
   ],
   "constants": {
-    "n_agents": 1000,
+    "n_agents": 300,
     "gene_len": 32,
     "hidden_len": 64
   },
@@ -111,7 +111,7 @@
     {
       "target": "temp_2",
       "op": "const",
-      "value": 0.01
+      "value": 1
     },
     {
       "target": "p_grav_g",
@@ -202,11 +202,6 @@
     },
     {
       "target": "temp_12",
-      "op": "const",
-      "value": 1
-    },
-    {
-      "target": "temp_13",
       "op": "mul",
       "args": [
         "temp_10",
@@ -214,7 +209,7 @@
       ]
     },
     {
-      "target": "temp_14",
+      "target": "temp_13",
       "op": "transpose",
       "args": [
         "s_pos_y"
@@ -223,136 +218,136 @@
       "dim1": 1
     },
     {
-      "target": "temp_15",
+      "target": "temp_14",
       "op": "sub",
       "args": [
-        "temp_14",
+        "temp_13",
         "s_pos_y"
       ]
     },
     {
-      "target": "temp_16",
+      "target": "temp_15",
       "op": "mul",
       "args": [
-        "temp_15",
+        "temp_14",
+        "temp_14"
+      ]
+    },
+    {
+      "target": "temp_16",
+      "op": "add",
+      "args": [
+        "temp_12",
         "temp_15"
       ]
     },
     {
       "target": "temp_17",
-      "op": "add",
-      "args": [
-        "temp_13",
-        "temp_16"
-      ]
-    },
-    {
-      "target": "temp_18",
       "op": "const",
       "value": 0.0001
     },
     {
-      "target": "temp_19",
+      "target": "temp_18",
       "op": "add",
       "args": [
-        "temp_17",
+        "temp_16",
+        "temp_17"
+      ]
+    },
+    {
+      "target": "temp_19",
+      "op": "div",
+      "args": [
+        "temp_2",
         "temp_18"
       ]
     },
     {
       "target": "temp_20",
-      "op": "div",
+      "op": "mul",
       "args": [
-        "temp_12",
+        "temp_11",
         "temp_19"
       ]
     },
     {
       "target": "temp_21",
-      "op": "mul",
-      "args": [
-        "temp_11",
-        "temp_20"
-      ]
-    },
-    {
-      "target": "temp_22",
       "op": "sum",
       "args": [
-        "temp_21"
+        "temp_20"
       ],
       "dim": 1,
       "keepdim": true
     },
     {
-      "target": "temp_23",
+      "target": "temp_22",
       "op": "mul",
       "args": [
         "temp_7",
-        "temp_22"
+        "temp_21"
       ]
     },
     {
-      "target": "temp_24",
+      "target": "temp_23",
       "op": "add",
       "args": [
         "s_vel_x",
-        "temp_23"
+        "temp_22"
       ]
     },
     {
       "target": "vel_x",
       "op": "add",
       "args": [
-        "temp_24"
+        "temp_23"
+      ]
+    },
+    {
+      "target": "temp_24",
+      "op": "mul",
+      "args": [
+        "temp_8",
+        "temp_14"
       ]
     },
     {
       "target": "temp_25",
       "op": "mul",
       "args": [
-        "temp_8",
-        "temp_15"
+        "temp_24",
+        "temp_19"
       ]
     },
     {
       "target": "temp_26",
-      "op": "mul",
-      "args": [
-        "temp_25",
-        "temp_20"
-      ]
-    },
-    {
-      "target": "temp_27",
       "op": "sum",
       "args": [
-        "temp_26"
+        "temp_25"
       ],
       "dim": 1,
       "keepdim": true
     },
     {
-      "target": "temp_28",
+      "target": "temp_27",
       "op": "mul",
       "args": [
         "temp_7",
-        "temp_27"
+        "temp_26"
       ]
     },
     {
-      "target": "temp_29",
+      "target": "temp_28",
       "op": "add",
       "args": [
         "s_vel_y",
-        "temp_28"
+        "temp_27"
       ]
     },
     {
       "target": "vel_y",
       "op": "add",
       "args": [
-        "temp_29"
+        "temp_28"
       ]
     },
     {

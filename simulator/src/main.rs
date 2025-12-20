@@ -11,7 +11,7 @@ use std::sync::{
 use std::time::Instant;
 
 mod recorder;
-mod _gen;
+// mod _gen; // Use library's _gen instead
 
 use recorder::{EvoConfig, EvoHeader, EvoRecorder};
 
@@ -171,5 +171,5 @@ macro_rules! run_simulation {
 
 fn main() -> Result<()> {
     let args = Args::parse();
-    crate::with_definition!(args.def, run_simulation)
+    evolimo_simulator::with_definition!(args.def, run_simulation)
 }

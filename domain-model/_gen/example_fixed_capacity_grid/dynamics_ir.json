@@ -1,0 +1,305 @@
+{
+  "state_vars": [
+    "pos_x",
+    "pos_y",
+    "vel_x",
+    "vel_y",
+    "size"
+  ],
+  "constants": {
+    "n_agents": 10,
+    "gene_len": 32,
+    "hidden_len": 64
+  },
+  "groups": {
+    "attributes": {
+      "activation": "softmax",
+      "params": [
+        "dummy_attr"
+      ]
+    },
+    "physics": {
+      "activation": "tanh",
+      "params": [
+        "grav_g"
+      ]
+    }
+  },
+  "boundary_conditions": [
+    {
+      "target_state": "pos_x",
+      "kind": "torus",
+      "range": [
+        0,
+        10240
+      ]
+    },
+    {
+      "target_state": "pos_y",
+      "kind": "torus",
+      "range": [
+        0,
+        8000
+      ]
+    }
+  ],
+  "grid_config": {
+    "width": 80,
+    "height": 64,
+    "capacity": 8,
+    "cell_size": [
+      128,
+      125
+    ]
+  },
+  "initialization": {
+    "state": {
+      "pos_x": {
+        "kind": "uniform",
+        "low": 0,
+        "high": 10240
+      },
+      "pos_y": {
+        "kind": "uniform",
+        "low": 0,
+        "high": 8000
+      },
+      "vel_x": {
+        "kind": "normal",
+        "mean": 0,
+        "std": 1
+      },
+      "vel_y": {
+        "kind": "normal",
+        "mean": 0,
+        "std": 1
+      },
+      "size": {
+        "kind": "const",
+        "value": 5
+      }
+    },
+    "genes": {
+      "kind": "normal",
+      "mean": 0,
+      "std": 1
+    }
+  },
+  "operations": [
+    {
+      "target": "temp_0",
+      "op": "const",
+      "value": 0.1
+    },
+    {
+      "target": "temp_1",
+      "op": "mul",
+      "args": [
+        "s_vel_x",
+        "temp_0"
+      ]
+    },
+    {
+      "target": "temp_2",
+      "op": "add",
+      "args": [
+        "s_pos_x",
+        "temp_1"
+      ]
+    },
+    {
+      "target": "pos_x",
+      "op": "add",
+      "args": [
+        "temp_2"
+      ]
+    },
+    {
+      "target": "temp_3",
+      "op": "mul",
+      "args": [
+        "s_vel_y",
+        "temp_0"
+      ]
+    },
+    {
+      "target": "temp_4",
+      "op": "add",
+      "args": [
+        "s_pos_y",
+        "temp_3"
+      ]
+    },
+    {
+      "target": "pos_y",
+      "op": "add",
+      "args": [
+        "temp_4"
+      ]
+    },
+    {
+      "target": "temp_5",
+      "op": "cat",
+      "args": [
+        "s_pos_x",
+        "s_pos_y",
+        "s_vel_x",
+        "s_vel_y",
+        "s_size"
+      ],
+      "dim": 1
+    },
+    {
+      "target": "temp_6",
+      "op": "grid_scatter",
+      "args": [
+        "temp_5",
+        "s_pos_x",
+        "s_pos_y"
+      ]
+    },
+    {
+      "target": "temp_7",
+      "op": "stencil",
+      "args": [
+        "temp_6"
+      ],
+      "stencil_range": 1
+    },
+    {
+      "target": "temp_8",
+      "op": "grid_gather",
+      "args": [
+        "temp_7",
+        "s_pos_x",
+        "s_pos_y"
+      ]
+    },
+    {
+      "target": "temp_9",
+      "op": "slice",
+      "args": [
+        "temp_8"
+      ],
+      "dim": 1,
+      "start": 2,
+      "len": 1
+    },
+    {
+      "target": "p_grav_g",
+      "op": "ref_param",
+      "param_info": {
+        "name": "grav_g",
+        "group": "physics"
+      }
+    },
+    {
+      "target": "temp_10",
+      "op": "const",
+      "value": 0
+    },
+    {
+      "target": "temp_11",
+      "op": "mul",
+      "args": [
+        "p_grav_g",
+        "temp_10"
+      ]
+    },
+    {
+      "target": "p_dummy_attr",
+      "op": "ref_param",
+      "param_info": {
+        "name": "dummy_attr",
+        "group": "attributes"
+      }
+    },
+    {
+      "target": "temp_12",
+      "op": "mul",
+      "args": [
+        "p_dummy_attr",
+        "temp_10"
+      ]
+    },
+    {
+      "target": "temp_13",
+      "op": "add",
+      "args": [
+        "temp_11",
+        "temp_12"
+      ]
+    },
+    {
+      "target": "temp_14",
+      "op": "add",
+      "args": [
+        "temp_9",
+        "temp_13"
+      ]
+    },
+    {
+      "target": "temp_15",
+      "op": "mul",
+      "args": [
+        "temp_14",
+        "temp_0"
+      ]
+    },
+    {
+      "target": "temp_16",
+      "op": "add",
+      "args": [
+        "s_vel_x",
+        "temp_15"
+      ]
+    },
+    {
+      "target": "vel_x",
+      "op": "add",
+      "args": [
+        "temp_16"
+      ]
+    },
+    {
+      "target": "temp_17",
+      "op": "slice",
+      "args": [
+        "temp_8"
+      ],
+      "dim": 1,
+      "start": 3,
+      "len": 1
+    },
+    {
+      "target": "temp_18",
+      "op": "mul",
+      "args": [
+        "temp_17",
+        "temp_0"
+      ]
+    },
+    {
+      "target": "temp_19",
+      "op": "add",
+      "args": [
+        "s_vel_y",
+        "temp_18"
+      ]
+    },
+    {
+      "target": "vel_y",
+      "op": "add",
+      "args": [
+        "temp_19"
+      ]
+    },
+    {
+      "target": "size",
+      "op": "add",
+      "args": [
+        "s_size"
+      ]
+    }
+  ]
+}
