@@ -178,7 +178,7 @@ pub fn grid_to_particles(
 /// Creates a padded grid with torus boundary conditions.
 /// The padding copies the opposite edges to create seamless wrap-around.
 /// Returns a grid of shape [H + 2*pad, W + 2*pad, Cap, D]
-fn create_torus_padded_grid(grid: &Tensor, pad: usize) -> Result<Tensor> {
+pub fn create_torus_padded_grid(grid: &Tensor, pad: usize) -> Result<Tensor> {
     let (h, w, _cap, _d) = grid.dims4()?;
     
     if pad == 0 {
@@ -206,71 +206,3 @@ fn create_torus_padded_grid(grid: &Tensor, pad: usize) -> Result<Tensor> {
     Ok(fully_padded)
 }
 
-pub fn solve_gravity_stencil(
-    grid: &Tensor, // [H, W, Cap, D]
-    range: i32,
-) -> Result<Tensor> {
-    let device = grid.device();
-    let (h, w, cap, _d) = grid.dims4()?;
-    let pad = range as usize;
-    
-    // Create padded grid ONCE (instead of 9 shift operations for range=1)
-    let padded = create_torus_padded_grid(grid, pad)?;
-    
-    // Extract center components from original grid [H, W, Cap, 1]
-    let g_pos_x = grid.narrow(3, 0, 1)?;
-    let g_pos_y = grid.narrow(3, 1, 1)?;
-    
-    // Center (Receiver): [H, W, Cap, 1, 1] for broadcasting
-    let c_pos_x = g_pos_x.unsqueeze(3)?;
-    let c_pos_y = g_pos_y.unsqueeze(3)?;
-    
-    let mut acc_fx = Tensor::zeros((h, w, cap, 1), grid.dtype(), device)?;
-    let mut acc_fy = Tensor::zeros((h, w, cap, 1), grid.dtype(), device)?;
-    
-    for dy in -range..=range {
-        for dx in -range..=range {
-            // Zero-copy view into padded grid (narrow returns a view, not a copy)
-            let offset_y = (pad as i32 + dy) as usize;
-            let offset_x = (pad as i32 + dx) as usize;
-            let neighbor = padded
-                .narrow(0, offset_y, h)?
-                .narrow(1, offset_x, w)?;
-            
-            // Neighbor (Source): [H, W, Cap, D]
-            let n_pos_x = neighbor.narrow(3, 0, 1)?;
-            let n_pos_y = neighbor.narrow(3, 1, 1)?;
-            let n_mass = neighbor.narrow(3, 4, 1)?;
-            
-            // Reshape for broadcast: [H, W, 1, Cap, 1]
-            let n_pos_x = n_pos_x.unsqueeze(2)?;
-            let n_pos_y = n_pos_y.unsqueeze(2)?;
-            let n_mass = n_mass.unsqueeze(2)?;
-            
-            // Delta: [H, W, Cap, Cap]
-            let dx_t = n_pos_x.broadcast_sub(&c_pos_x)?;
-            let dy_t = n_pos_y.broadcast_sub(&c_pos_y)?;
-            
-            let d2 = dx_t.powf(2.0)?.broadcast_add(&dy_t.powf(2.0)?)?;
-            let d2 = d2.broadcast_add(&Tensor::new(&[0.01f32], device)?)?; // Softening
-            
-            let inv_d2 = d2.powf(-1.0)?;
-            let f_x = n_mass.broadcast_mul(&dx_t)?.broadcast_mul(&inv_d2)?;
-            let f_y = n_mass.broadcast_mul(&dy_t)?.broadcast_mul(&inv_d2)?;
-            
-            // Sum over neighbor particles (dim 3)
-            let f_x_sum = f_x.sum(3)?; // [H, W, Cap, 1]
-            let f_y_sum = f_y.sum(3)?;
-            
-            acc_fx = acc_fx.add(&f_x_sum)?;
-            acc_fy = acc_fy.add(&f_y_sum)?;
-        }
-    }
-    
-    // Construct result [H, W, Cap, D]
-    // 0:pos_x, 1:pos_y, 2:vel_x, 3:vel_y, 4:size
-    // We put forces into vel_x and vel_y slots. Others zero.
-    let zeros = Tensor::zeros((h, w, cap, 1), grid.dtype(), device)?;
-    
-    Tensor::cat(&[&zeros, &zeros, &acc_fx, &acc_fy, &zeros], 3)
-}

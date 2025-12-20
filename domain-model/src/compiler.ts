@@ -31,7 +31,17 @@ function getTempVar(ctx: CompilerContext): string {
 // Compile expression tree to flat operations
 function compileExpression(expr: Expression, ctx: CompilerContext): string {
   // Create a simple hash of the expression for deduplication
-  const exprKey = JSON.stringify(expr);
+  // For stencil, we need to include the kernel function in the hash
+  let exprKey: string;
+  if (expr.op === 'stencil') {
+    // Use a custom serialization for stencil to include kernel
+    exprKey = JSON.stringify({
+      ...expr,
+      kernel: expr.kernel.toString(),
+    });
+  } else {
+    exprKey = JSON.stringify(expr);
+  }
 
   // Check if already compiled
   const existing = ctx.varMap.get(exprKey);
@@ -177,12 +187,57 @@ function compileExpression(expr: Expression, ctx: CompilerContext): string {
 
     case 'stencil': {
       const val = compileExpression(expr.value, ctx);
+
+      if (!expr.kernel) {
+        throw new Error(
+          'Stencil operation missing kernel function. Ensure you are using the updated ops.stencil(grid, range, kernel) signature.'
+        );
+      }
+
+      // Compile kernel
+      const kernelCtx: CompilerContext = {
+        tempVarCounter: 0,
+        operations: [],
+        varMap: new Map(),
+      };
+
+      // Define placeholders for kernel inputs
+      // These will be provided by the runtime/generator as available variables in the kernel scope
+      const centerExpr: Expression = { op: 'ref_aux', id: 'center' };
+      const neighborExpr: Expression = { op: 'ref_aux', id: 'neighbor' };
+
+      // Generate kernel expression tree
+      const kernelResultExpr = expr.kernel(centerExpr, neighborExpr);
+
+      // Compile kernel to operations
+      const kernelResultVar = compileExpression(kernelResultExpr, kernelCtx);
+
+      // We need to ensure the result is explicitly marked if it's just a reference
+      // But for now, we assume the generator takes the last operation's target or we can add a specific return op?
+      // Let's add a 'kernel_return' op to be explicit, or just rely on convention.
+      // Convention: The result of the kernel is the variable returned by compileExpression.
+      // We can append a move/alias op if we want to enforce a specific output name, but let's keep it simple.
+      // We will store the result variable name in the stencil op args or a new property?
+      // Actually, let's just add a final identity op to a known name 'result' if we want,
+      // or just let the generator use `kernelResultVar`.
+      // Let's add `kernel_result_var` to the operation definition? No, `Operation` is fixed.
+      // Let's just append an identity op to make sure the result is in a specific variable?
+      // Or better: The generator will look at `kernel_operations`.
+      // We can add a dummy op `kernel_output` that takes `kernelResultVar`.
+
+      kernelCtx.operations.push({
+        target: 'kernel_output',
+        op: 'ref_aux', // Reuse ref_aux or similar to just alias
+        args: [kernelResultVar],
+      });
+
       resultVar = getTempVar(ctx);
       ctx.operations.push({
         target: resultVar,
         op: 'stencil',
         args: [val],
         stencil_range: expr.range,
+        kernel_operations: kernelCtx.operations,
       });
       ctx.varMap.set(exprKey, resultVar);
       return resultVar;
@@ -241,7 +296,7 @@ function compileExpression(expr: Expression, ctx: CompilerContext): string {
 function compileRules(
   rules: DynamicsRule[],
   stateVarOrder: string[],
-  simConstants: any,
+  simConstants: OutputIR['constants'],
   parameterGroups: ParameterGroups,
   boundaryConditions: BoundaryCondition[],
   initialization: InitializationIR,
@@ -347,6 +402,13 @@ function compileRules(
       case 'sum':
       case 'slice':
         collectParams(expr.value);
+        if (expr.op === 'stencil' && expr.kernel) {
+          // Collect params from kernel
+          const centerExpr: Expression = { op: 'ref_aux', id: 'center' };
+          const neighborExpr: Expression = { op: 'ref_aux', id: 'neighbor' };
+          const kernelExpr = expr.kernel(centerExpr, neighborExpr);
+          collectParams(kernelExpr);
+        }
         break;
       case 'grid_scatter':
       case 'grid_gather':

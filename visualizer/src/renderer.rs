@@ -39,10 +39,22 @@ pub struct Instance {
 
 impl Instance {
     pub fn desc() -> wgpu::VertexBufferLayout<'static> {
-        static ATTRIBS: [wgpu::VertexAttribute; 3] = wgpu::vertex_attr_array![
-            1 => Float32x2,
-            2 => Float32,
-            3 => Float32x4,
+        static ATTRIBS: [wgpu::VertexAttribute; 3] = [
+            wgpu::VertexAttribute {
+                offset: 0,
+                shader_location: 1,
+                format: wgpu::VertexFormat::Float32x2,
+            },
+            wgpu::VertexAttribute {
+                offset: 8,
+                shader_location: 2,
+                format: wgpu::VertexFormat::Float32,
+            },
+            wgpu::VertexAttribute {
+                offset: 16,
+                shader_location: 3,
+                format: wgpu::VertexFormat::Float32x4,
+            },
         ];
         wgpu::VertexBufferLayout {
             array_stride: std::mem::size_of::<Instance>() as wgpu::BufferAddress,

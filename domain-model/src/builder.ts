@@ -36,7 +36,11 @@ export const ops = {
     x,
     y,
   }),
-  stencil: (value: Expression, range: number): Expression => ({ op: 'stencil', value, range }),
+  stencil: (
+    value: Expression,
+    range: number,
+    kernel: (center: Expression, neighbor: Expression) => Expression
+  ): Expression => ({ op: 'stencil', value, range, kernel }),
   grid_gather: (value: Expression, x: Expression, y: Expression): Expression => ({
     op: 'grid_gather',
     value,

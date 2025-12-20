@@ -13,7 +13,7 @@ import type {
 } from '../types.js';
 
 export const SIM_CONSTANTS = {
-  n_agents: 10000,
+  n_agents: 10,
   gene_len: 32,
   hidden_len: 64,
 };
@@ -122,7 +122,34 @@ export const DYNAMICS_RULES: DynamicsRule[] = [
       // 3. Compute Stencil Interactions (Gravity)
       // Uses 3x3 neighborhood (stencil_range = 1)
       // Returns grid with forces in vel slots (indices 2 and 3)
-      const force_grid = ops.stencil(grid_state, 1);
+      const force_grid = ops.stencil(grid_state, 1, (center, neighbor) => {
+        const c_px = ops.slice(center, 1, 0, 1);
+        const c_py = ops.slice(center, 1, 1, 1);
+
+        const n_px = ops.slice(neighbor, 1, 0, 1);
+        const n_py = ops.slice(neighbor, 1, 1, 1);
+        const n_m = ops.slice(neighbor, 1, 4, 1);
+
+        const n_px_T = ops.transpose(n_px, 0, 1);
+        const n_py_T = ops.transpose(n_py, 0, 1);
+        const n_m_T = ops.transpose(n_m, 0, 1);
+
+        const dx = ops.sub(n_px_T, c_px);
+        const dy = ops.sub(n_py_T, c_py);
+
+        const d2 = ops.add(ops.add(ops.mul(dx, dx), ops.mul(dy, dy)), ops.const(0.01));
+        const inv_d2 = ops.div(ops.const(1.0), d2);
+
+        const fx = ops.mul(ops.mul(n_m_T, dx), inv_d2);
+        const fy = ops.mul(ops.mul(n_m_T, dy), inv_d2);
+
+        const fx_sum = ops.sum(fx, 1, true);
+        const fy_sum = ops.sum(fy, 1, true);
+
+        const zeros = ops.mul(c_px, ops.const(0.0));
+
+        return ops.cat([zeros, zeros, fx_sum, fy_sum, zeros], 1);
+      });
 
       // 4. Gather forces back to particles → [N, 5]
       const force_vec = ops.grid_gather(force_grid, STATE_VARS.pos_x, STATE_VARS.pos_y);
@@ -152,7 +179,34 @@ export const DYNAMICS_RULES: DynamicsRule[] = [
       );
 
       const grid_state = ops.grid_scatter(state_vec, STATE_VARS.pos_x, STATE_VARS.pos_y);
-      const force_grid = ops.stencil(grid_state, 1);
+      const force_grid = ops.stencil(grid_state, 1, (center, neighbor) => {
+        const c_px = ops.slice(center, 1, 0, 1);
+        const c_py = ops.slice(center, 1, 1, 1);
+
+        const n_px = ops.slice(neighbor, 1, 0, 1);
+        const n_py = ops.slice(neighbor, 1, 1, 1);
+        const n_m = ops.slice(neighbor, 1, 4, 1);
+
+        const n_px_T = ops.transpose(n_px, 0, 1);
+        const n_py_T = ops.transpose(n_py, 0, 1);
+        const n_m_T = ops.transpose(n_m, 0, 1);
+
+        const dx = ops.sub(n_px_T, c_px);
+        const dy = ops.sub(n_py_T, c_py);
+
+        const d2 = ops.add(ops.add(ops.mul(dx, dx), ops.mul(dy, dy)), ops.const(0.01));
+        const inv_d2 = ops.div(ops.const(1.0), d2);
+
+        const fx = ops.mul(ops.mul(n_m_T, dx), inv_d2);
+        const fy = ops.mul(ops.mul(n_m_T, dy), inv_d2);
+
+        const fx_sum = ops.sum(fx, 1, true);
+        const fy_sum = ops.sum(fy, 1, true);
+
+        const zeros = ops.mul(c_px, ops.const(0.0));
+
+        return ops.cat([zeros, zeros, fx_sum, fy_sum, zeros], 1);
+      });
       const force_vec = ops.grid_gather(force_grid, STATE_VARS.pos_x, STATE_VARS.pos_y);
 
       // Extract Force Y (index 3)

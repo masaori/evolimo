@@ -7,7 +7,7 @@
     "size"
   ],
   "constants": {
-    "n_agents": 10000,
+    "n_agents": 10,
     "gene_len": 32,
     "hidden_len": 64
   },
@@ -144,7 +144,237 @@
       "args": [
         "temp_3"
       ],
-      "stencil_range": 1
+      "stencil_range": 1,
+      "kernel_operations": [
+        {
+          "target": "temp_0",
+          "op": "slice",
+          "args": [
+            "center"
+          ],
+          "dim": 1,
+          "start": 0,
+          "len": 1
+        },
+        {
+          "target": "temp_1",
+          "op": "const",
+          "args": [],
+          "value": 0
+        },
+        {
+          "target": "temp_2",
+          "op": "mul",
+          "args": [
+            "temp_0",
+            "temp_1"
+          ]
+        },
+        {
+          "target": "temp_3",
+          "op": "slice",
+          "args": [
+            "neighbor"
+          ],
+          "dim": 1,
+          "start": 4,
+          "len": 1
+        },
+        {
+          "target": "temp_4",
+          "op": "transpose",
+          "args": [
+            "temp_3"
+          ],
+          "dim0": 0,
+          "dim1": 1
+        },
+        {
+          "target": "temp_5",
+          "op": "slice",
+          "args": [
+            "neighbor"
+          ],
+          "dim": 1,
+          "start": 0,
+          "len": 1
+        },
+        {
+          "target": "temp_6",
+          "op": "transpose",
+          "args": [
+            "temp_5"
+          ],
+          "dim0": 0,
+          "dim1": 1
+        },
+        {
+          "target": "temp_7",
+          "op": "sub",
+          "args": [
+            "temp_6",
+            "temp_0"
+          ]
+        },
+        {
+          "target": "temp_8",
+          "op": "mul",
+          "args": [
+            "temp_4",
+            "temp_7"
+          ]
+        },
+        {
+          "target": "temp_9",
+          "op": "const",
+          "args": [],
+          "value": 1
+        },
+        {
+          "target": "temp_10",
+          "op": "mul",
+          "args": [
+            "temp_7",
+            "temp_7"
+          ]
+        },
+        {
+          "target": "temp_11",
+          "op": "slice",
+          "args": [
+            "neighbor"
+          ],
+          "dim": 1,
+          "start": 1,
+          "len": 1
+        },
+        {
+          "target": "temp_12",
+          "op": "transpose",
+          "args": [
+            "temp_11"
+          ],
+          "dim0": 0,
+          "dim1": 1
+        },
+        {
+          "target": "temp_13",
+          "op": "slice",
+          "args": [
+            "center"
+          ],
+          "dim": 1,
+          "start": 1,
+          "len": 1
+        },
+        {
+          "target": "temp_14",
+          "op": "sub",
+          "args": [
+            "temp_12",
+            "temp_13"
+          ]
+        },
+        {
+          "target": "temp_15",
+          "op": "mul",
+          "args": [
+            "temp_14",
+            "temp_14"
+          ]
+        },
+        {
+          "target": "temp_16",
+          "op": "add",
+          "args": [
+            "temp_10",
+            "temp_15"
+          ]
+        },
+        {
+          "target": "temp_17",
+          "op": "const",
+          "args": [],
+          "value": 0.01
+        },
+        {
+          "target": "temp_18",
+          "op": "add",
+          "args": [
+            "temp_16",
+            "temp_17"
+          ]
+        },
+        {
+          "target": "temp_19",
+          "op": "div",
+          "args": [
+            "temp_9",
+            "temp_18"
+          ]
+        },
+        {
+          "target": "temp_20",
+          "op": "mul",
+          "args": [
+            "temp_8",
+            "temp_19"
+          ]
+        },
+        {
+          "target": "temp_21",
+          "op": "sum",
+          "args": [
+            "temp_20"
+          ],
+          "dim": 1,
+          "keepdim": true
+        },
+        {
+          "target": "temp_22",
+          "op": "mul",
+          "args": [
+            "temp_4",
+            "temp_14"
+          ]
+        },
+        {
+          "target": "temp_23",
+          "op": "mul",
+          "args": [
+            "temp_22",
+            "temp_19"
+          ]
+        },
+        {
+          "target": "temp_24",
+          "op": "sum",
+          "args": [
+            "temp_23"
+          ],
+          "dim": 1,
+          "keepdim": true
+        },
+        {
+          "target": "temp_25",
+          "op": "cat",
+          "args": [
+            "temp_2",
+            "temp_2",
+            "temp_21",
+            "temp_24",
+            "temp_2"
+          ],
+          "dim": 1
+        },
+        {
+          "target": "kernel_output",
+          "op": "ref_aux",
+          "args": [
+            "temp_25"
+          ]
+        }
+      ]
     },
     {
       "target": "temp_5",

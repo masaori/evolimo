@@ -107,6 +107,8 @@ struct Operation {
     #[serde(default)]
     stencil_range: Option<i32>,
     #[serde(default)]
+    kernel_operations: Option<Vec<Operation>>,
+    #[serde(default)]
     start: Option<usize>,
     #[serde(default)]
     len: Option<usize>,
@@ -551,7 +553,88 @@ fn generate_dynamics(ir: &ConfigIR, out_dir: &Path) {
             }
             "stencil" if op.args.len() == 1 => {
                 let range = op.stencil_range.unwrap_or(1);
-                format!("crate::grid::solve_gravity_stencil(&{}, {})?", op.args[0], range)
+                if let Some(kernel_ops) = &op.kernel_operations {
+                    // New generic stencil generation
+                    let mut block = String::new();
+                    block.push_str("{\n");
+                    block.push_str(&format!("        let grid = &{};\n", op.args[0]));
+                    block.push_str(&format!("        let range = {};\n", range));
+                    block.push_str("        let (h, w, cap, d) = grid.dims4()?;\n");
+                    block.push_str("        let pad = range as usize;\n");
+                    block.push_str("        let padded = crate::grid::create_torus_padded_grid(grid, pad)?;\n");
+                    block.push_str("        let mut acc = grid.zeros_like()?;\n");
+
+                    block.push_str("        for dy in -range..=range {\n");
+                    block.push_str("            for dx in -range..=range {\n");
+                    block.push_str("                let offset_y = (pad as i32 + dy) as usize;\n");
+                    block.push_str("                let offset_x = (pad as i32 + dx) as usize;\n");
+                    block.push_str("                let neighbor = padded.narrow(0, offset_y, h)?.narrow(1, offset_x, w)?;\n");
+                    block.push_str("                let center = grid;\n"); // Alias for clarity
+
+                    // Generate kernel operations
+                    for k_op in kernel_ops {
+                        let expr = match k_op.op.as_str() {
+                            "ref_aux" => {
+                                // Just an alias
+                                k_op.args[0].clone()
+                            }
+                            "const" => {
+                                if let Some(val) = k_op.value {
+                                    format!("candle_core::Tensor::new(&[{}f32], state.device())?", val)
+                                } else {
+                                    "candle_core::Tensor::new(&[0f32], state.device())?".to_string()
+                                }
+                            }
+                            "add" | "sub" | "mul" | "div" => {
+                                format!("{}.broadcast_{}(&{})?", k_op.args[0], k_op.op, k_op.args[1])
+                            }
+                            "slice" => {
+                                let dim = k_op.dim.unwrap_or(0) + 2; // Offset dim
+                                let start = k_op.start.unwrap_or(0);
+                                let len = k_op.len.unwrap_or(1);
+                                format!("{}.narrow({}, {}, {})?", k_op.args[0], dim, start, len)
+                            }
+                            "transpose" => {
+                                let d0 = k_op.dim0.unwrap_or(0) + 2;
+                                let d1 = k_op.dim1.unwrap_or(1) + 2;
+                                format!("{}.transpose({}, {})?", k_op.args[0], d0, d1)
+                            }
+                            "sum" => {
+                                let dim = k_op.dim.unwrap_or(0) + 2;
+                                let keepdim = k_op.keepdim.unwrap_or(true);
+                                if keepdim {
+                                    format!("{}.sum_keepdim({})?", k_op.args[0], dim)
+                                } else {
+                                    format!("{}.sum({})?", k_op.args[0], dim)
+                                }
+                            }
+                            "cat" => {
+                                let args_refs: Vec<String> = k_op.args.iter().map(|a| format!("&{}", a)).collect();
+                                let args_str = args_refs.join(", ");
+                                let dim = k_op.dim.unwrap_or(0) + 2;
+                                format!("candle_core::Tensor::cat(&[{}], {})?", args_str, dim)
+                            }
+                            _ => {
+                                format!("/* Unimplemented kernel op: {} */ candle_core::Tensor::new(&[0f32], state.device())?", k_op.op)
+                            }
+                        };
+                        block.push_str(&format!("                let {} = {};\n", k_op.target, expr));
+                    }
+
+                    // Accumulate result
+                    if let Some(last_op) = kernel_ops.last() {
+                        block.push_str(&format!("                acc = acc.add(&{})?;\n", last_op.target));
+                    }
+
+                    block.push_str("            }\n");
+                    block.push_str("        }\n");
+                    block.push_str("        acc\n");
+                    block.push_str("    }");
+                    block
+                } else {
+                    // Legacy fallback
+                    format!("crate::grid::solve_gravity_stencil(&{}, {})?", op.args[0], range)
+                }
             }
             "stencil" if op.args.len() == 1 => {
                 // args: [grid]

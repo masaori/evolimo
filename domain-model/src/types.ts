@@ -30,7 +30,12 @@ export type Expression =
   | { op: 'relu'; value: Expression }
   | { op: 'neg'; value: Expression }
   | { op: 'grid_scatter'; value: Expression; x: Expression; y: Expression }
-  | { op: 'stencil'; value: Expression; range: number }
+  | {
+      op: 'stencil';
+      value: Expression;
+      range: number;
+      kernel: (center: Expression, neighbor: Expression) => Expression;
+    }
   | { op: 'grid_gather'; value: Expression; x: Expression; y: Expression }
   | { op: 'cat'; values: Expression[]; dim: number }
   | { op: 'slice'; value: Expression; dim: number; start: number; len: number }
@@ -112,6 +117,7 @@ export interface Operation {
     | 'const'
     | 'ref_state'
     | 'ref_param'
+    | 'ref_aux'
     | 'grid_scatter'
     | 'stencil'
     | 'grid_gather'
@@ -126,6 +132,7 @@ export interface Operation {
   param_info?: { name: string; group: string }; // For ref_param op
   // Tensor ops
   dim?: number;
+  kernel_operations?: Operation[];
   keepdim?: boolean;
   dim0?: number;
   dim1?: number;
