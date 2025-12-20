@@ -33,7 +33,7 @@ const STATE_VARS = {
   pos_y: ops.state('pos_y'),
   vel_x: ops.state('vel_x'),
   vel_y: ops.state('vel_y'),
-  color: ops.state('color'), // 0 or 1
+  size: ops.state('size'), // 0 or 1
 } as const;
 
 export const STATE_VAR_ORDER: (keyof typeof STATE_VARS)[] = [
@@ -41,7 +41,7 @@ export const STATE_VAR_ORDER: (keyof typeof STATE_VARS)[] = [
   'pos_y',
   'vel_x',
   'vel_y',
-  'color',
+  'size',
 ];
 
 export const INITIALIZATION: InitializationIR = {
@@ -109,7 +109,7 @@ export const VISUAL_MAPPING: VisualMapping = {
   },
   color: {
     source: 'pos_x',
-    colormap: 'plasma',
+    colormap: 'heat',
     range: [-WORLD_SIZE / 2, WORLD_SIZE / 2],
   },
 };

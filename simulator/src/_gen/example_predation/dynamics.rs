@@ -20,8 +20,8 @@ pub fn init_state(
 ) -> candle_core::Result<candle_core::Tensor> {
     let init_pos_x = candle_core::Tensor::rand(-500f32, 500f32, (n_agents, 1), device)?;
     let init_pos_y = candle_core::Tensor::rand(-500f32, 500f32, (n_agents, 1), device)?;
-    let init_vel_x = candle_core::Tensor::randn(0f32, 10f32, (n_agents, 1), device)?;
-    let init_vel_y = candle_core::Tensor::randn(0f32, 10f32, (n_agents, 1), device)?;
+    let init_vel_x = candle_core::Tensor::randn(0f32, 2f32, (n_agents, 1), device)?;
+    let init_vel_y = candle_core::Tensor::randn(0f32, 2f32, (n_agents, 1), device)?;
     let init_size = candle_core::Tensor::rand(1f32, 10f32, (n_agents, 1), device)?;
 
     candle_core::Tensor::cat(&[
@@ -53,28 +53,51 @@ pub fn update_dynamics(
 
 
     // Internal dynamics operations
-    let temp_0 = candle_core::Tensor::new(&[0.1f32], state.device())?;
-    let temp_1 = s_vel_x.broadcast_mul(&temp_0)?;
-    let temp_2 = s_pos_x.broadcast_add(&temp_1)?;
-    let pos_x = temp_2;
-    let temp_3 = s_vel_y.broadcast_mul(&temp_0)?;
-    let temp_4 = s_pos_y.broadcast_add(&temp_3)?;
-    let pos_y = temp_4;
-    let vel_x = s_vel_x;
-    let vel_y = s_vel_y;
-    let temp_5 = candle_core::Tensor::new(&[0f32], state.device())?;
-    let temp_6 = {
-                    let diff = s_pos_x.broadcast_sub(&temp_5)?;
+    let temp_0 = s_pos_x.broadcast_add(&s_vel_x)?;
+    let pos_x = temp_0;
+    let temp_1 = s_pos_y.broadcast_add(&s_vel_y)?;
+    let pos_y = temp_1;
+    let temp_2 = candle_core::Tensor::new(&[0f32], state.device())?;
+    let temp_3 = p_dummy_phys.broadcast_mul(&temp_2)?;
+    let temp_4 = s_vel_x.broadcast_add(&temp_3)?;
+    let vel_x = temp_4;
+    let temp_5 = p_dummy_attr.broadcast_mul(&temp_2)?;
+    let temp_6 = s_vel_y.broadcast_add(&temp_5)?;
+    let vel_y = temp_6;
+    let temp_7 = s_pos_x.transpose(0, 1)?;
+    let temp_8 = s_pos_x.broadcast_sub(&temp_7)?;
+    let temp_9 = temp_8.broadcast_mul(&temp_8)?;
+    let temp_10 = s_pos_y.transpose(0, 1)?;
+    let temp_11 = s_pos_y.broadcast_sub(&temp_10)?;
+    let temp_12 = temp_11.broadcast_mul(&temp_11)?;
+    let temp_13 = temp_9.broadcast_add(&temp_12)?;
+    let temp_14 = candle_core::Tensor::new(&[2500f32], state.device())?;
+    let temp_15 = {
+                    let diff = temp_13.broadcast_sub(&temp_14)?;
                     let zeros = diff.zeros_like()?;
-                    diff.gt(&zeros)?.to_dtype(candle_core::DType::F32)?
+                    diff.lt(&zeros)?.to_dtype(candle_core::DType::F32)?
                 };
-    let temp_7 = candle_core::Tensor::new(&[1f32], state.device())?;
-    let temp_8 = temp_6.broadcast_mul(&temp_7.broadcast_sub(&temp_5)?)?.broadcast_add(&temp_5)?;
-    let temp_9 = p_dummy_phys.broadcast_mul(&temp_5)?;
-    let temp_10 = p_dummy_attr.broadcast_mul(&temp_5)?;
-    let temp_11 = temp_9.broadcast_add(&temp_10)?;
-    let temp_12 = temp_8.broadcast_add(&temp_11)?;
-    let size = temp_12;
+    let temp_16 = candle_core::Tensor::new(&[1f32], state.device())?;
+    let temp_17 = temp_15.broadcast_mul(&temp_16.broadcast_sub(&temp_2)?)?.broadcast_add(&temp_2)?;
+    let temp_18 = s_size.transpose(0, 1)?;
+    let temp_19 = candle_core::Tensor::new(&[2f32], state.device())?;
+    let temp_20 = temp_18.broadcast_mul(&temp_19)?;
+    let temp_21 = {
+                    let diff = s_size.broadcast_sub(&temp_20)?;
+                    let zeros = diff.zeros_like()?;
+                    diff.ge(&zeros)?.to_dtype(candle_core::DType::F32)?
+                };
+    let temp_22 = temp_21.broadcast_mul(&temp_16.broadcast_sub(&temp_2)?)?.broadcast_add(&temp_2)?;
+    let temp_23 = temp_17.broadcast_mul(&temp_22)?;
+    let temp_24 = candle_core::Tensor::new(&[0.5f32], state.device())?;
+    let temp_25 = temp_18.broadcast_mul(&temp_24)?;
+    let temp_26 = temp_23.broadcast_mul(&temp_25)?;
+    let temp_27 = temp_26.sum_keepdim(1)?;
+    let temp_28 = s_size.broadcast_add(&temp_27)?;
+    let temp_29 = temp_26.transpose(0, 1)?;
+    let temp_30 = temp_29.sum_keepdim(1)?;
+    let temp_31 = temp_28.broadcast_sub(&temp_30)?;
+    let size = temp_31;
 
     // Boundary conditions
     // torus wrap: pos_x in [-500.000000,500.000000]

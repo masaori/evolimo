@@ -16,11 +16,11 @@
     "scale": "linear"
   },
   "color": {
-    "source": "pos_x",
-    "colormap": "heat",
+    "source": "size",
+    "colormap": "viridis",
     "range": [
-      -500,
-      500
+      0,
+      50
     ]
   }
 }

@@ -564,23 +564,23 @@ fn generate_dynamics(ir: &ConfigIR, out_dir: &Path) {
             }
             "lt" if op.args.len() == 2 => {
                 format!("{{
-                    let lhs = {}.broadcast_as((state.dim(0)?, 1))?;
-                    let rhs = {}.broadcast_as((state.dim(0)?, 1))?;
-                    lhs.lt(&rhs)?.to_dtype(candle_core::DType::F32)?
+                    let diff = {}.broadcast_sub(&{})?;
+                    let zeros = diff.zeros_like()?;
+                    diff.lt(&zeros)?.to_dtype(candle_core::DType::F32)?
                 }}", op.args[0], op.args[1])
             }
             "gt" if op.args.len() == 2 => {
                 format!("{{
-                    let lhs = {}.broadcast_as((state.dim(0)?, 1))?;
-                    let rhs = {}.broadcast_as((state.dim(0)?, 1))?;
-                    lhs.gt(&rhs)?.to_dtype(candle_core::DType::F32)?
+                    let diff = {}.broadcast_sub(&{})?;
+                    let zeros = diff.zeros_like()?;
+                    diff.gt(&zeros)?.to_dtype(candle_core::DType::F32)?
                 }}", op.args[0], op.args[1])
             }
             "ge" if op.args.len() == 2 => {
                 format!("{{
-                    let lhs = {}.broadcast_as((state.dim(0)?, 1))?;
-                    let rhs = {}.broadcast_as((state.dim(0)?, 1))?;
-                    lhs.ge(&rhs)?.to_dtype(candle_core::DType::F32)?
+                    let diff = {}.broadcast_sub(&{})?;
+                    let zeros = diff.zeros_like()?;
+                    diff.ge(&zeros)?.to_dtype(candle_core::DType::F32)?
                 }}", op.args[0], op.args[1])
             }
             "where" if op.args.len() == 3 => {
