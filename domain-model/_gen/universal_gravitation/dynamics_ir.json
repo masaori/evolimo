@@ -7,7 +7,7 @@
     "size"
   ],
   "constants": {
-    "n_agents": 300,
+    "n_agents": 10000,
     "gene_len": 32,
     "hidden_len": 64
   },

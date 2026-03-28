@@ -333,6 +333,9 @@ impl Renderer {
 
         self.queue.submit(Some(encoder.finish()));
         frame.present();
+
+        self.device.poll(wgpu::Maintain::Wait);
+
         Ok(())
     }
 }

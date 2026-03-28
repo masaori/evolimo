@@ -13,7 +13,7 @@ import type {
 } from '../types.js';
 
 export const SIM_CONSTANTS = {
-  n_agents: 10,
+  n_agents: 100,
   gene_len: 32,
   hidden_len: 64,
 };

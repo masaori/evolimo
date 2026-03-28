@@ -27,3 +27,11 @@ visualizer/target
 # OS
 .DS_Store
 Thumbs.db
+
+# Logs
+simulator/sim.log
+simulator/sim_cpu.log
+simulator/test_memory.sh
+
+# Terraform
+infrastructure/**/.terraform/
